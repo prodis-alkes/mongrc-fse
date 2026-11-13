@@ -1,0 +1,6 @@
+{
+  "name": "MonGRC - Governance, Risk & Compliance Monitoring",
+  "description": "Sistem Monitoring GRC (Tata Kelola, Manajemen Risiko, dan Kepatuhan) untuk Satuan Kerja di Lingkungan Ditjen P2 Kementerian Kesehatan RI dengan visualisasi otomatis, grid spreadsheet, dan kolaborasi multi-pengguna.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
