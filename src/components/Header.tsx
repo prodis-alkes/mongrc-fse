@@ -132,7 +132,7 @@ export const Header: React.FC<HeaderProps> = ({ onOpenImportModal, onOpenLoginMo
               }`}
             >
               <Users className="w-3.5 h-3.5" />
-              <span>Manajemen Pengguna</span>
+              <span>Manajemen Akun</span>
             </button>
           </nav>
 
@@ -306,7 +306,7 @@ export const Header: React.FC<HeaderProps> = ({ onOpenImportModal, onOpenLoginMo
                         className="w-full text-left px-3 py-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-xs text-slate-700 dark:text-slate-200 font-medium flex items-center gap-2 transition-colors"
                       >
                         <Users className="w-4 h-4 text-blue-800 dark:text-blue-400" />
-                        <span>Buka Manajemen Pengguna (RBAC)</span>
+                        <span>Manajemen Akun</span>
                       </button>
                       <button
                         onClick={() => {

@@ -102,8 +102,8 @@ export const HeatmapMatrix: React.FC = () => {
           {[
             { key: 'ALL', label: 'Semua (57)' },
             { key: 'Balai Besar', label: 'Balai Besar (7)' },
-            { key: 'Balai Kelas I', label: 'Balai I (26)' },
-            { key: 'Balai Kelas II', label: 'Balai II (16)' },
+            { key: 'Balai Kelas I', label: 'Balai Kelas I (26)' },
+            { key: 'Balai Kelas II', label: 'Balai Kelas II (16)' },
             { key: 'Loka', label: 'Loka (2)' },
             { key: 'Pusat', label: 'Pusat (6)' },
           ].map(c => (

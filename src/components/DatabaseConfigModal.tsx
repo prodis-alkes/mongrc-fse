@@ -15,7 +15,6 @@ import {
   BarChart3,
   MessageSquare,
   History,
-  Globe,
 } from 'lucide-react';
 
 export const DatabaseConfigModal: React.FC = () => {
@@ -334,14 +333,6 @@ export const DatabaseConfigModal: React.FC = () => {
               </div>
             )}
           </form>
-
-          {/* GitHub Pages Deployment Note */}
-          <div className="p-3.5 rounded-xl bg-blue-50/60 dark:bg-blue-950/30 border border-blue-200/80 dark:border-blue-800/60 flex items-start gap-2.5">
-            <Globe className="w-4 h-4 text-blue-700 dark:text-blue-400 shrink-0 mt-0.5" />
-            <div className="text-[11px] text-slate-700 dark:text-slate-300 leading-relaxed">
-              <strong className="text-slate-900 dark:text-slate-100">Siap Deploy ke github.io:</strong> Aplikasi ini menggunakan arsitektur statis + Firestore tanpa server backend terpisah. Saat menerbitkan ke <span className="font-mono">*.github.io</span>, pastikan menambahkan domain GitHub Pages Anda di <strong>Firebase Console &rarr; Authentication &rarr; Settings &rarr; Authorized domains</strong> agar login Google berjalan lancar.
-            </div>
-          </div>
         </div>
       </div>
     </div>

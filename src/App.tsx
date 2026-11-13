@@ -82,7 +82,7 @@ function MainApp() {
           </div>
 
           <div className="flex items-center gap-6">
-            <span>Kementerian Kesehatan Republik Indonesia</span>
+            <span>Ditjen Penanggulangan Penyakit</span>
             <span>·</span>
             <span>57 Satker Terdaftar</span>
           </div>

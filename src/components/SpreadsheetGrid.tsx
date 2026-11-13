@@ -216,7 +216,7 @@ export const SpreadsheetGrid: React.FC = () => {
                 columnViewMode === 'all' ? 'bg-blue-900 dark:bg-blue-700 text-white' : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
               }`}
             >
-              Semua Kolom (Lengkap)
+              Semua Kolom
             </button>
             <button
               onClick={() => setColumnViewMode('raw')}
@@ -270,8 +270,8 @@ export const SpreadsheetGrid: React.FC = () => {
           {[
             { key: 'ALL', label: 'Semua (57)' },
             { key: 'Balai Besar', label: 'Balai Besar (7)' },
-            { key: 'Balai Kelas I', label: 'Balai I (26)' },
-            { key: 'Balai Kelas II', label: 'Balai II (16)' },
+            { key: 'Balai Kelas I', label: 'Balai Kelas I (26)' },
+            { key: 'Balai Kelas II', label: 'Balai Kelas II (16)' },
             { key: 'Loka', label: 'Loka (2)' },
             { key: 'Pusat', label: 'Pusat (6)' },
           ].map(c => (

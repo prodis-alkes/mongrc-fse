@@ -133,7 +133,7 @@ export const ExecutiveDashboard: React.FC = () => {
         <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 shadow-xs">
           <div className="flex items-center justify-between">
             <span className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-              Rata-Rata GRC Nasional
+              Kinerja Rata-Rata
             </span>
             <Award className="w-4 h-4 text-blue-800 dark:text-blue-400" />
           </div>
@@ -205,7 +205,7 @@ export const ExecutiveDashboard: React.FC = () => {
         >
           <div className="flex items-center justify-between">
             <span className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-              Perlu Akselerasi & Pembinaan
+              Perlu Akselerasi
             </span>
             <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400" />
           </div>

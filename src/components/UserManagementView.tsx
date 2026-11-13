@@ -190,7 +190,7 @@ export const UserManagementView: React.FC = () => {
       <div className="space-y-6">
         <div className="pb-2 border-b border-slate-200 dark:border-slate-800">
           <h1 className="text-2xl font-extrabold text-slate-900 dark:text-slate-50 tracking-tight">
-            Manajemen Pengguna & Otoritas
+            Manajemen Akun dan Otoritas
           </h1>
           <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">
             Pengelolaan akun ASN, peran hak akses (RBAC), dan penugasan satuan kerja di lingkungan Ditjen P2 Kemenkes RI.
