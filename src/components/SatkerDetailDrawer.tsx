@@ -260,16 +260,21 @@ export const SatkerDetailDrawer: React.FC = () => {
 
                 <textarea
                   rows={3}
+                  disabled={!currentUser || currentUser.role === 'Viewer'}
                   value={newCommentText}
                   onChange={e => setNewCommentText(e.target.value)}
-                  placeholder="Tuliskan temuan audit, permintaan evidensi, atau tanggapan perbaikan..."
-                  className="w-full text-xs p-2.5 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 rounded-md focus:outline-hidden focus:ring-1 focus:ring-blue-600"
+                  placeholder={
+                    !currentUser || currentUser.role === 'Viewer'
+                      ? 'Mode Baca Publik: Masuk sebagai Admin/Editor melalui menu Database untuk mengirim catatan.'
+                      : 'Tuliskan temuan audit, permintaan evidensi, atau tanggapan perbaikan...'
+                  }
+                  className="w-full text-xs p-2.5 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 rounded-md focus:outline-hidden focus:ring-1 focus:ring-blue-600 disabled:opacity-60"
                 />
 
                 <div className="flex justify-end mt-2">
                   <button
                     type="submit"
-                    disabled={!newCommentText.trim()}
+                    disabled={!newCommentText.trim() || !currentUser || currentUser.role === 'Viewer'}
                     className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-blue-900 dark:bg-blue-700 rounded-lg hover:bg-blue-800 dark:hover:bg-blue-600 disabled:opacity-40 transition-colors"
                   >
                     <Send className="w-3.5 h-3.5" />

@@ -28,7 +28,9 @@ export const UserManagementView: React.FC = () => {
     addUser, 
     updateUser, 
     deleteUser, 
-    toggleUserStatus 
+    toggleUserStatus,
+    isDbConnected,
+    setIsDatabaseModalOpen,
   } = useGRC();
 
   const [searchQuery, setSearchQuery] = useState('');
@@ -182,6 +184,43 @@ export const UserManagementView: React.FC = () => {
   };
 
   const isAdmin = currentUser?.role === 'Admin';
+
+  if (!isAdmin || !isDbConnected) {
+    return (
+      <div className="space-y-6">
+        <div className="pb-2 border-b border-slate-200 dark:border-slate-800">
+          <h1 className="text-2xl font-extrabold text-slate-900 dark:text-slate-50 tracking-tight">
+            Manajemen Pengguna & Otoritas
+          </h1>
+          <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">
+            Pengelolaan akun ASN, peran hak akses (RBAC), dan penugasan satuan kerja di lingkungan Ditjen P2 Kemenkes RI.
+          </p>
+        </div>
+
+        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-8 text-center max-w-xl mx-auto shadow-xs space-y-4">
+          <div className="w-12 h-12 rounded-2xl bg-blue-50 dark:bg-blue-950/60 text-blue-900 dark:text-blue-400 flex items-center justify-center mx-auto">
+            <Lock className="w-6 h-6" />
+          </div>
+          <div className="space-y-1.5">
+            <h2 className="text-base font-bold text-slate-900 dark:text-slate-100">
+              Akses Terbatas Khusus Administrator
+            </h2>
+            <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
+              Demi perlindungan data pribadi (NIP &amp; Email dinas), daftar akun pengguna hanya dapat dilihat dan dikelola setelah Administrator melakukan autentikasi Google melalui panel Database.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setIsDatabaseModalOpen(true)}
+            className="inline-flex items-center gap-2 px-4 py-2 text-xs font-semibold text-white bg-blue-900 dark:bg-blue-700 hover:bg-blue-800 dark:hover:bg-blue-600 rounded-lg transition-colors cursor-pointer"
+          >
+            <ShieldCheck className="w-4 h-4" />
+            <span>Masuk sebagai Admin</span>
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">

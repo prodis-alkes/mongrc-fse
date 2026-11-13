@@ -10,24 +10,22 @@ import { SatkerDetailDrawer } from './components/SatkerDetailDrawer';
 import { CSVImportModal } from './components/CSVImportModal';
 import { LoginPage } from './components/LoginPage';
 import { DatabaseConfigModal } from './components/DatabaseConfigModal';
-import { Database, AlertTriangle, X } from 'lucide-react';
+import { AlertTriangle, X } from 'lucide-react';
 
 function MainApp() {
   const {
     activeTab,
-    currentUser,
-    isDbConnected,
     dbSyncError,
     clearDbSyncError,
-    setIsDatabaseModalOpen,
   } = useGRC();
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
-  const [, setIsLoginModalOpen] = useState(false);
+  const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
 
-  if (!currentUser) {
+  if (isLoginModalOpen) {
     return (
       <LoginPage
         onSuccess={() => setIsLoginModalOpen(false)}
+        onExploreAsGuest={() => setIsLoginModalOpen(false)}
       />
     );
   }
@@ -42,24 +40,6 @@ function MainApp() {
 
       {/* Main View Container */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Contextual Firestore Database Status Banner */}
-        {!isDbConnected && (
-          <div className="mb-6 p-3 rounded-xl bg-blue-50/80 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800/70 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
-            <div className="flex items-center gap-2.5 text-blue-900 dark:text-blue-200">
-              <Database className="w-4 h-4 text-blue-700 dark:text-blue-400 shrink-0" />
-              <span>
-                <strong>Database Cloud Firestore siap dihubungkan.</strong> Masuk dengan akun Google untuk membaca & menyimpan perubahan data, pengguna, dan konfigurasi secara real-time.
-              </span>
-            </div>
-            <button
-              onClick={() => setIsDatabaseModalOpen(true)}
-              className="px-3 py-1.5 rounded-lg bg-blue-900 dark:bg-blue-700 hover:bg-blue-800 dark:hover:bg-blue-600 text-white font-semibold shrink-0 transition-colors cursor-pointer"
-            >
-              Hubungkan Database
-            </button>
-          </div>
-        )}
-
         {dbSyncError && (
           <div className="mb-6 p-3 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800/70 flex items-center justify-between gap-3 text-xs text-rose-900 dark:text-rose-200">
             <div className="flex items-center gap-2.5">

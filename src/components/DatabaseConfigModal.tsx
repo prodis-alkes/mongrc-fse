@@ -23,6 +23,7 @@ export const DatabaseConfigModal: React.FC = () => {
     isDatabaseModalOpen,
     setIsDatabaseModalOpen,
     firebaseUser,
+    isFirestoreLive,
     isDbConnected,
     isDbConnecting,
     isSyncingDb,
@@ -84,7 +85,7 @@ export const DatabaseConfigModal: React.FC = () => {
                 Database Firestore & Konfigurasi Sistem
               </h3>
               <p className="text-xs text-slate-500 dark:text-slate-400">
-                Penyimpanan real-time terpusat untuk Data Satker, Pengguna RBAC, Log Audit & Konfigurasi
+                Pembacaan data GRC aktif otomatis untuk semua pengunjung · Login Google khusus Admin/Editor
               </p>
             </div>
           </div>
@@ -107,7 +108,7 @@ export const DatabaseConfigModal: React.FC = () => {
                     <CheckCircle2 className="w-5 h-5 text-emerald-600 dark:text-emerald-400 shrink-0" />
                     <div>
                       <div className="font-bold text-slate-900 dark:text-slate-100">
-                        Database Firestore Aktif & Tersinkronisasi
+                        Admin / Editor Aktif (Baca & Tulis Database)
                       </div>
                       <div className="text-[11px] text-slate-500 dark:text-slate-400">
                         Login sebagai: <span className="font-semibold text-slate-700 dark:text-slate-300">{firebaseUser?.email}</span>
@@ -117,13 +118,15 @@ export const DatabaseConfigModal: React.FC = () => {
                   </>
                 ) : (
                   <>
-                    <AlertTriangle className="w-5 h-5 text-amber-500 shrink-0" />
+                    <CheckCircle2 className={`w-5 h-5 shrink-0 ${isFirestoreLive ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-500'}`} />
                     <div>
                       <div className="font-bold text-slate-900 dark:text-slate-100">
-                        Mode Pratinjau Lokal (Belum Masuk ke Database)
+                        {isFirestoreLive
+                          ? 'Terhubung ke Firestore (Mode Baca Publik)'
+                          : 'Menghubungkan ke Firestore...'}
                       </div>
                       <div className="text-[11px] text-slate-500 dark:text-slate-400">
-                        Masuk dengan Google untuk mengaktifkan penyimpanan real-time lintas perangkat di Cloud Firestore.
+                        Semua data Satker & konfigurasi terbaca otomatis. Masuk sebagai Admin/Editor untuk mengedit data atau mengelola pengguna.
                       </div>
                     </div>
                   </>

@@ -220,8 +220,8 @@ service cloud.firestore {
     // =========================================================================
 
     match /satkers/{satkerId} {
-      allow get: if isAuthenticated() && isValidId(satkerId);
-      allow list: if isAuthenticated();
+      allow get: if isValidId(satkerId);
+      allow list: if true;
       allow create: if isValidId(satkerId) && isAdmin() && isValidSatker(request.resource.data);
       allow update: if isValidId(satkerId) &&
                        isValidSatker(request.resource.data) &&
@@ -279,22 +279,22 @@ service cloud.firestore {
     }
 
     match /config/{configId} {
-      allow get: if isAuthenticated() && isValidId(configId);
-      allow list: if isAuthenticated();
+      allow get: if isValidId(configId);
+      allow list: if true;
       allow create, update: if isValidId(configId) && isAdmin() && isValidAppConfig(request.resource.data);
       allow delete: if false;
     }
 
     match /auditLogs/{logId} {
-      allow get: if isAuthenticated() && isValidId(logId);
-      allow list: if isAuthenticated();
+      allow get: if isValidId(logId);
+      allow list: if true;
       allow create: if isValidId(logId) && isAuthenticated() && isValidAuditLog(request.resource.data);
       allow update, delete: if false;
     }
 
     match /comments/{commentId} {
-      allow get: if isAuthenticated() && isValidId(commentId);
-      allow list: if isAuthenticated();
+      allow get: if isValidId(commentId);
+      allow list: if true;
       allow create: if isValidId(commentId) &&
                        isAuthenticated() &&
                        isValidComment(request.resource.data) &&

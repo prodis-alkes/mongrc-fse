@@ -33,6 +33,7 @@ export const Header: React.FC<HeaderProps> = ({ onOpenImportModal, onOpenLoginMo
     resetToBaselineData,
     theme,
     toggleTheme,
+    isFirestoreLive,
     isDbConnected,
     isSyncingDb,
     setIsDatabaseModalOpen
@@ -180,8 +181,13 @@ export const Header: React.FC<HeaderProps> = ({ onOpenImportModal, onOpenLoginMo
 
               <button
                 onClick={onOpenImportModal}
-                title="Impor pembaruan dari berkas CSV"
-                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-md hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+                disabled={currentUser?.role !== 'Admin'}
+                title={
+                  currentUser?.role === 'Admin'
+                    ? 'Impor pembaruan dari berkas CSV'
+                    : 'Impor CSV khusus Admin (Masuk Admin untuk mengaktifkan)'
+                }
+                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-md hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors whitespace-nowrap shrink-0 cursor-pointer disabled:opacity-45 disabled:cursor-not-allowed"
               >
                 <Upload className="w-3.5 h-3.5 text-slate-600 dark:text-slate-300" />
                 <span>Impor CSV</span>
@@ -189,8 +195,13 @@ export const Header: React.FC<HeaderProps> = ({ onOpenImportModal, onOpenLoginMo
 
               <button
                 onClick={() => setShowConfirmReset(true)}
-                title="Reset ke data baseline rujukan awal"
-                className="inline-flex items-center justify-center p-1.5 text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-md transition-colors cursor-pointer"
+                disabled={currentUser?.role !== 'Admin'}
+                title={
+                  currentUser?.role === 'Admin'
+                    ? 'Reset ke data baseline rujukan awal'
+                    : 'Reset baseline khusus Admin'
+                }
+                className="inline-flex items-center justify-center p-1.5 text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-md transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 <RotateCcw className="w-3.5 h-3.5" />
               </button>
@@ -199,22 +210,24 @@ export const Header: React.FC<HeaderProps> = ({ onOpenImportModal, onOpenLoginMo
                 onClick={() => setIsDatabaseModalOpen(true)}
                 title={
                   isDbConnected
-                    ? 'Database Firestore Terhubung — Klik untuk Status & Konfigurasi'
-                    : 'Hubungkan Database Firestore'
+                    ? 'Admin/Editor Terautentikasi (Baca & Tulis Firestore)'
+                    : isFirestoreLive
+                    ? 'Terhubung ke Database Firestore (Mode Baca Publik) — Klik untuk Login Admin'
+                    : 'Status & Konfigurasi Database Firestore'
                 }
                 className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-md border transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
-                  isDbConnected
+                  isDbConnected || isFirestoreLive
                     ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800 hover:bg-emerald-100 dark:hover:bg-emerald-900/60'
                     : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border-slate-300 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700'
                 }`}
               >
-                <Database className={`w-3.5 h-3.5 ${isDbConnected ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-600 dark:text-slate-300'}`} />
-                <span className="hidden xl:inline">Database</span>
+                <Database className={`w-3.5 h-3.5 ${isDbConnected || isFirestoreLive ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-600 dark:text-slate-300'}`} />
+                <span className="hidden xl:inline">{isDbConnected ? 'Admin DB' : 'Live DB'}</span>
                 <span
                   className={`w-2 h-2 rounded-full ${
                     isSyncingDb
                       ? 'bg-amber-500 animate-pulse'
-                      : isDbConnected
+                      : isDbConnected || isFirestoreLive
                       ? 'bg-emerald-500'
                       : 'bg-slate-300 dark:bg-slate-600'
                   }`}
@@ -222,8 +235,8 @@ export const Header: React.FC<HeaderProps> = ({ onOpenImportModal, onOpenLoginMo
               </button>
             </div>
 
-            {/* User Account / Profile Dropdown */}
-            {currentUser ? (
+            {/* User Account / Profile Dropdown (Show compact Sign-In CTA for Public Viewer) */}
+            {currentUser && currentUser.role !== 'Viewer' ? (
               <div className="relative">
                 <button
                   onClick={() => setShowUserDropdown(prev => !prev)}
@@ -359,11 +372,12 @@ export const Header: React.FC<HeaderProps> = ({ onOpenImportModal, onOpenLoginMo
               </div>
             ) : (
               <button
-                onClick={onOpenLoginModal}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-blue-900 hover:bg-blue-800 dark:bg-blue-700 dark:hover:bg-blue-600 rounded-lg shadow-xs transition-colors"
+                onClick={() => setIsDatabaseModalOpen(true)}
+                title="Mode Baca Publik — Masuk sebagai Admin/Editor untuk mengedit data"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-blue-900 hover:bg-blue-800 dark:bg-blue-700 dark:hover:bg-blue-600 rounded-lg shadow-xs transition-colors cursor-pointer whitespace-nowrap"
               >
                 <LogIn className="w-3.5 h-3.5" />
-                <span>Masuk Akun</span>
+                <span>Masuk Admin</span>
               </button>
             )}
           </div>

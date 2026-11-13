@@ -67,7 +67,7 @@ export interface IndicatorMeta {
   weightCategory: 'Governance' | 'Risk' | 'Compliance' | 'Financial & Operational';
 }
 
-export type UserRole = 'Admin' | 'Auditor' | 'Satker PIC';
+export type UserRole = 'Admin' | 'Auditor' | 'Satker PIC' | 'Viewer';
 
 export interface UserProfile {
   id: string;

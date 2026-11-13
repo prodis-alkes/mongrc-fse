@@ -36,6 +36,19 @@ import {
   updateCommentInFirestore,
 } from '../services/firestoreService';
 
+export const PUBLIC_VIEWER_USER: UserProfile = {
+  id: 'public-viewer',
+  username: 'pemantau',
+  email: '',
+  nip: '-',
+  name: 'Mode Pemantau (Publik)',
+  role: 'Viewer',
+  agency: 'Ditjen P2 Kemenkes RI',
+  avatarInitials: 'MP',
+  status: 'active',
+  createdAt: '2026-01-01 00:00',
+};
+
 export const INITIAL_USERS: UserProfile[] = [
   {
     id: 'user-admin-1',
@@ -257,6 +270,7 @@ interface GRCContextType {
   setSpreadsheetEditLocked: (locked: boolean) => void;
   updateAppConfiguration: (updates: Partial<AppConfiguration>) => Promise<void>;
   firebaseUser: User | null;
+  isFirestoreLive: boolean;
   isDbConnected: boolean;
   isDbConnecting: boolean;
   isSyncingDb: boolean;
@@ -274,33 +288,13 @@ interface GRCContextType {
 const GRCContext = createContext<GRCContextType | null>(null);
 
 export const GRCProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  // Users state (cached in localStorage when offline/unauthenticated, live synced via Firestore when signed in)
-  const [users, setUsers] = useState<UserProfile[]>(() => {
-    try {
-      const stored = localStorage.getItem('mongrc_users_v2');
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-      }
-    } catch (e) {
-      console.warn('Failed to parse users, using defaults:', e);
-    }
-    return INITIAL_USERS;
-  });
+  // Users directory (populated from Firestore only when Admin authenticates)
+  const [users, setUsers] = useState<UserProfile[]>([]);
 
-  const [currentUser, setCurrentUser] = useState<UserProfile | null>(() => {
-    try {
-      const stored = localStorage.getItem('mongrc_current_user_v2');
-      if (stored) {
-        return JSON.parse(stored);
-      }
-    } catch (e) {
-      console.warn('Failed to parse current user session:', e);
-    }
-    return INITIAL_USERS[0];
-  });
+  // Default to non-privileged Public Viewer so visitors immediately view live DB without Google Sign-In
+  const [currentUser, setCurrentUser] = useState<UserProfile | null>(PUBLIC_VIEWER_USER);
 
-  const isAuthenticated = currentUser !== null;
+  const isAuthenticated = currentUser !== null && currentUser.role !== 'Viewer';
 
   const [activeTab, setActiveTab] = useState<NavigationTab>('executive');
   const [selectedSatkerNo, setSelectedSatkerNo] = useState<number | null>(null);
@@ -403,6 +397,7 @@ export const GRCProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Firebase Auth + Firestore State
   const [firebaseUser, setFirebaseUser] = useState<User | null>(null);
+  const [isFirestoreLive, setIsFirestoreLive] = useState(false);
   const [isDbConnecting, setIsDbConnecting] = useState(false);
   const [isSyncingDb, setIsSyncingDb] = useState(false);
   const [isDatabaseSeeded, setIsDatabaseSeeded] = useState(false);
@@ -413,6 +408,7 @@ export const GRCProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const isDbConnected = firebaseUser !== null;
 
   const markSyncedNow = useCallback(() => {
+    setIsFirestoreLive(true);
     setLastSyncedAt(
       new Date().toLocaleTimeString('id-ID', {
         hour: '2-digit',
@@ -422,43 +418,82 @@ export const GRCProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     );
   }, []);
 
-  // Boot connection check
+  // 1. Always attach public-read Firestore listeners immediately on boot (no Google Sign-In required!)
   useEffect(() => {
     testFirestoreConnection().then((res) => {
       if (!res.ok && res.message) {
         setDbSyncError(res.message);
       }
     });
-  }, []);
 
-  // Firebase Auth & Real-Time Firestore Subscriptions
+    const unsubSatkers = subscribeToSatkers(
+      (rows) => {
+        if (rows.length > 0) {
+          setSatkers(rows);
+          setIsDatabaseSeeded(true);
+        } else {
+          setIsDatabaseSeeded(false);
+        }
+        markSyncedNow();
+      },
+      (errMsg) => setDbSyncError(errMsg)
+    );
+
+    const unsubConfig = subscribeToAppConfig(
+      (cfg) => {
+        if (cfg) {
+          setAppConfig((prev) => ({ ...prev, ...cfg }));
+        }
+        markSyncedNow();
+      },
+      (errMsg) => setDbSyncError(errMsg)
+    );
+
+    const unsubLogs = subscribeToAuditLogs(
+      (logs) => {
+        if (logs.length > 0) {
+          setAuditLogs(logs);
+        }
+        markSyncedNow();
+      },
+      (errMsg) => setDbSyncError(errMsg)
+    );
+
+    const unsubComments = subscribeToComments(
+      (comms) => {
+        if (comms.length > 0) {
+          setComments(comms);
+        }
+        markSyncedNow();
+      },
+      (errMsg) => setDbSyncError(errMsg)
+    );
+
+    return () => {
+      unsubSatkers();
+      unsubConfig();
+      unsubLogs();
+      unsubComments();
+    };
+  }, [markSyncedNow]);
+
+  // 2. Firebase Auth listener ONLY for Admin/Editor write privileges & PII user management
   useEffect(() => {
-    let unsubSatkers: (() => void) | null = null;
-    let unsubConfig: (() => void) | null = null;
-    let unsubLogs: (() => void) | null = null;
-    let unsubComments: (() => void) | null = null;
     let unsubUsers: (() => void) | null = null;
     let isCancelled = false;
 
-    const cleanupSubs = () => {
-      unsubSatkers?.();
-      unsubConfig?.();
-      unsubLogs?.();
-      unsubComments?.();
+    const cleanupUsers = () => {
       unsubUsers?.();
-      unsubSatkers = null;
-      unsubConfig = null;
-      unsubLogs = null;
-      unsubComments = null;
       unsubUsers = null;
     };
 
     const unsubAuth = subscribeToFirebaseAuth(async (user) => {
-      cleanupSubs();
+      cleanupUsers();
       setFirebaseUser(user);
 
       if (!user) {
-        setIsDatabaseSeeded(false);
+        setUsers([]);
+        setCurrentUser(PUBLIC_VIEWER_USER);
         return;
       }
 
@@ -471,7 +506,6 @@ export const GRCProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const { isAdmin, userDoc } = await resolveUserRoleFromFirestore(emailLower, user.uid);
         if (isCancelled) return;
 
-        // Auto-map active MonGRC currentUser profile based on authenticated Google account
         if (userDoc) {
           setCurrentUser(userDoc);
         } else if (isAdmin) {
@@ -484,18 +518,33 @@ export const GRCProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             name: user.displayName || 'Budi Hermawan, S.Kom., M.T.I.',
             role: 'Admin',
             agency: 'Setditjen P2 Kemenkes RI',
-            avatarInitials: (user.displayName || 'BH')
-              .split(' ')
-              .slice(0, 2)
-              .map((w) => w[0]?.toUpperCase() || '')
-              .join('') || 'BH',
+            avatarInitials:
+              (user.displayName || 'BH')
+                .split(' ')
+                .slice(0, 2)
+                .map((w) => w[0]?.toUpperCase() || '')
+                .join('') || 'BH',
             status: 'active',
             lastLogin: new Date().toLocaleString('id-ID'),
             createdAt: '2026-01-15 09:00',
           });
+        } else {
+          setCurrentUser({
+            id: user.uid,
+            uid: user.uid,
+            username: emailLower.split('@')[0] || 'pengguna',
+            email: emailLower,
+            nip: '-',
+            name: user.displayName || emailLower || 'Pengguna Google',
+            role: 'Auditor',
+            agency: 'Kementerian Kesehatan RI',
+            avatarInitials: (user.displayName || emailLower || 'PG').slice(0, 2).toUpperCase(),
+            status: 'active',
+            createdAt: new Date().toLocaleString('id-ID'),
+          });
         }
 
-        // Seed Firestore if empty and signed in as Admin
+        // Seed Firestore automatically on first Admin sign-in when database is empty
         const alreadySeeded = await checkIsDatabaseSeeded();
         if (isCancelled) return;
 
@@ -509,73 +558,26 @@ export const GRCProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             authorUid: user.uid,
             updatedBy: user.displayName || user.email || 'Admin',
           });
+          setIsDatabaseSeeded(true);
         }
-
-        // Subscribe to real-time collections
-        unsubSatkers = subscribeToSatkers(
-          (rows) => {
-            if (rows.length > 0) {
-              setSatkers(rows);
-              setIsDatabaseSeeded(true);
-              markSyncedNow();
-            } else {
-              setIsDatabaseSeeded(false);
-            }
-          },
-          (errMsg) => setDbSyncError(errMsg)
-        );
-
-        unsubConfig = subscribeToAppConfig(
-          (cfg) => {
-            if (cfg) {
-              setAppConfig((prev) => ({ ...prev, ...cfg }));
-              markSyncedNow();
-            }
-          },
-          (errMsg) => setDbSyncError(errMsg)
-        );
-
-        unsubLogs = subscribeToAuditLogs(
-          (logs) => {
-            if (logs.length > 0) {
-              setAuditLogs(logs);
-              markSyncedNow();
-            }
-          },
-          (errMsg) => setDbSyncError(errMsg)
-        );
-
-        unsubComments = subscribeToComments(
-          (comms) => {
-            if (comms.length > 0) {
-              setComments(comms);
-              markSyncedNow();
-            }
-          },
-          (errMsg) => setDbSyncError(errMsg)
-        );
 
         unsubUsers = subscribeToUsers(
           isBootstrap,
           emailLower || null,
           (dbUsers) => {
             if (dbUsers.length > 0) {
-              if (isBootstrap) {
-                setUsers(dbUsers);
-              } else {
-                setUsers((prev) => {
-                  const map = new Map(prev.map((u) => [u.id, u]));
-                  dbUsers.forEach((u) => map.set(u.id, u));
-                  return Array.from(map.values());
-                });
-              }
+              setUsers(dbUsers);
               markSyncedNow();
+            } else if (isAdmin) {
+              setUsers(INITIAL_USERS);
             }
           },
           (errMsg) => setDbSyncError(errMsg)
         );
       } catch (err) {
-        setDbSyncError(err instanceof Error ? err.message : 'Gagal menyambungkan ke database Firestore.');
+        setDbSyncError(
+          err instanceof Error ? err.message : 'Gagal memverifikasi otoritas akun pada Firestore.'
+        );
       } finally {
         if (!isCancelled) setIsSyncingDb(false);
       }
@@ -583,7 +585,7 @@ export const GRCProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     return () => {
       isCancelled = true;
-      cleanupSubs();
+      cleanupUsers();
       unsubAuth();
     };
   }, [markSyncedNow]);
@@ -605,13 +607,14 @@ export const GRCProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const disconnectDatabase = async (): Promise<void> => {
     await signOutFirebase();
-    setLastSyncedAt(null);
+    setUsers([]);
+    setCurrentUser(PUBLIC_VIEWER_USER);
     setDbSyncError(null);
   };
 
   const syncLocalStateToDatabase = async (): Promise<void> => {
     if (!firebaseUser) {
-      setDbSyncError('Silakan masuk dengan Google terlebih dahulu untuk menyinkronkan database.');
+      setDbSyncError('Silakan masuk sebagai Admin terlebih dahulu untuk menyinkronkan database.');
       return;
     }
     setIsSyncingDb(true);
@@ -635,27 +638,7 @@ export const GRCProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  // Persist local cache
-  useEffect(() => {
-    try {
-      localStorage.setItem('mongrc_users_v2', JSON.stringify(users));
-    } catch (e) {
-      console.warn('Storage error for users:', e);
-    }
-  }, [users]);
-
-  useEffect(() => {
-    try {
-      if (currentUser) {
-        localStorage.setItem('mongrc_current_user_v2', JSON.stringify(currentUser));
-      } else {
-        localStorage.removeItem('mongrc_current_user_v2');
-      }
-    } catch (e) {
-      console.warn('Storage error for session:', e);
-    }
-  }, [currentUser]);
-
+  // Cache public non-PII GRC data locally for instant load
   useEffect(() => {
     try {
       localStorage.setItem('mongrc_satkers_v1', JSON.stringify(satkers));
@@ -688,7 +671,8 @@ export const GRCProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return { success: false, error: 'Silakan masukkan Username, Email, atau NIP.' };
     }
 
-    const matchedUser = users.find(
+    const pool = users.length > 0 ? users : INITIAL_USERS;
+    const matchedUser = pool.find(
       (u) =>
         u.username.toLowerCase() === cleanId ||
         u.email.toLowerCase() === cleanId ||
@@ -721,37 +705,40 @@ export const GRCProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }),
     };
 
-    setUsers((prev) => prev.map((u) => (u.id === updatedUser.id ? updatedUser : u)));
     setCurrentUser(updatedUser);
-
     return { success: true };
   };
 
   const logout = () => {
-    setCurrentUser(null);
+    setCurrentUser(PUBLIC_VIEWER_USER);
+    setUsers([]);
     if (firebaseUser) {
       signOutFirebase().catch(() => {});
     }
   };
 
   const updateAppConfiguration = async (updates: Partial<AppConfiguration>) => {
+    if (!firebaseUser || currentUser?.role !== 'Admin') {
+      setDbSyncError('Masuk sebagai Admin (Google) melalui menu Database untuk mengubah konfigurasi.');
+      return;
+    }
+
     const nextConfig: AppConfiguration = { ...appConfig, ...updates };
     setAppConfig(nextConfig);
-
-    if (firebaseUser) {
-      setIsSyncingDb(true);
-      setDbSyncError(null);
-      try {
-        await saveAppConfigToFirestore(
-          nextConfig,
-          currentUser?.name || firebaseUser.email || 'Administrator'
-        );
-        markSyncedNow();
-      } catch (err) {
-        setDbSyncError(err instanceof Error ? err.message : 'Gagal menyimpan konfigurasi ke Firestore.');
-      } finally {
-        setIsSyncingDb(false);
-      }
+    setIsSyncingDb(true);
+    setDbSyncError(null);
+    try {
+      await saveAppConfigToFirestore(
+        nextConfig,
+        currentUser?.name || firebaseUser.email || 'Administrator'
+      );
+      markSyncedNow();
+    } catch (err) {
+      setDbSyncError(
+        err instanceof Error ? err.message : 'Gagal menyimpan konfigurasi ke Firestore.'
+      );
+    } finally {
+      setIsSyncingDb(false);
     }
   };
 
@@ -763,8 +750,11 @@ export const GRCProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const addUser = (
     userData: Omit<UserProfile, 'id' | 'createdAt'>
   ): { success: boolean; error?: string } => {
-    if (!currentUser || currentUser.role !== 'Admin') {
-      return { success: false, error: 'Hanya Admin yang berwenang menambahkan pengguna baru.' };
+    if (!firebaseUser || !currentUser || currentUser.role !== 'Admin') {
+      return {
+        success: false,
+        error: 'Hanya Admin yang sudah masuk ke Database yang berwenang menambahkan pengguna.',
+      };
     }
 
     const exists = users.some(
@@ -795,9 +785,9 @@ export const GRCProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const auditEntry: AuditLogEntry = {
       id: `audit-${Date.now()}`,
       timestamp: new Date().toLocaleString('id-ID'),
-      authorUid: firebaseUser?.uid,
+      authorUid: firebaseUser.uid,
       authorName: currentUser.name,
-      authorRole: currentUser.role,
+      authorRole: 'Admin',
       satkerNo: userData.assignedSatkerNo || 0,
       satkerName: userData.assignedSatker || 'Setditjen P2',
       indicatorKey: 'user_management',
@@ -808,18 +798,16 @@ export const GRCProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
     setAuditLogs((prev) => [auditEntry, ...prev]);
 
-    if (firebaseUser) {
-      setIsSyncingDb(true);
-      Promise.all([
-        saveUserToFirestore(newUser),
-        createAuditLogInFirestore(auditEntry, firebaseUser.uid),
-      ])
-        .then(() => markSyncedNow())
-        .catch((err) =>
-          setDbSyncError(err instanceof Error ? err.message : 'Gagal menyimpan pengguna ke Firestore.')
-        )
-        .finally(() => setIsSyncingDb(false));
-    }
+    setIsSyncingDb(true);
+    Promise.all([
+      saveUserToFirestore(newUser),
+      createAuditLogInFirestore(auditEntry, firebaseUser.uid),
+    ])
+      .then(() => markSyncedNow())
+      .catch((err) =>
+        setDbSyncError(err instanceof Error ? err.message : 'Gagal menyimpan pengguna ke Firestore.')
+      )
+      .finally(() => setIsSyncingDb(false));
 
     return { success: true };
   };
@@ -828,8 +816,11 @@ export const GRCProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     userId: string,
     updates: Partial<UserProfile>
   ): { success: boolean; error?: string } => {
-    if (!currentUser || currentUser.role !== 'Admin') {
-      return { success: false, error: 'Hanya Admin yang berwenang mengubah profil pengguna.' };
+    if (!firebaseUser || !currentUser || currentUser.role !== 'Admin') {
+      return {
+        success: false,
+        error: 'Hanya Admin yang sudah masuk ke Database yang berwenang mengubah profil pengguna.',
+      };
     }
 
     const targetUser = users.find((u) => u.id === userId);
@@ -847,9 +838,9 @@ export const GRCProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const auditEntry: AuditLogEntry = {
       id: `audit-${Date.now()}`,
       timestamp: new Date().toLocaleString('id-ID'),
-      authorUid: firebaseUser?.uid,
+      authorUid: firebaseUser.uid,
       authorName: currentUser.name,
-      authorRole: currentUser.role,
+      authorRole: 'Admin',
       satkerNo: updatedUser.assignedSatkerNo || 0,
       satkerName: updatedUser.assignedSatker || 'Setditjen P2',
       indicatorKey: 'user_management',
@@ -860,25 +851,28 @@ export const GRCProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
     setAuditLogs((prev) => [auditEntry, ...prev]);
 
-    if (firebaseUser) {
-      setIsSyncingDb(true);
-      Promise.all([
-        saveUserToFirestore(updatedUser, targetUser.email),
-        createAuditLogInFirestore(auditEntry, firebaseUser.uid),
-      ])
-        .then(() => markSyncedNow())
-        .catch((err) =>
-          setDbSyncError(err instanceof Error ? err.message : 'Gagal memperbarui pengguna di Firestore.')
+    setIsSyncingDb(true);
+    Promise.all([
+      saveUserToFirestore(updatedUser, targetUser.email),
+      createAuditLogInFirestore(auditEntry, firebaseUser.uid),
+    ])
+      .then(() => markSyncedNow())
+      .catch((err) =>
+        setDbSyncError(
+          err instanceof Error ? err.message : 'Gagal memperbarui pengguna di Firestore.'
         )
-        .finally(() => setIsSyncingDb(false));
-    }
+      )
+      .finally(() => setIsSyncingDb(false));
 
     return { success: true };
   };
 
   const deleteUser = (userId: string): { success: boolean; error?: string } => {
-    if (!currentUser || currentUser.role !== 'Admin') {
-      return { success: false, error: 'Hanya Admin yang berwenang menghapus akun pengguna.' };
+    if (!firebaseUser || !currentUser || currentUser.role !== 'Admin') {
+      return {
+        success: false,
+        error: 'Hanya Admin yang sudah masuk ke Database yang berwenang menghapus akun pengguna.',
+      };
     }
 
     if (currentUser.id === userId) {
@@ -895,9 +889,9 @@ export const GRCProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const auditEntry: AuditLogEntry = {
       id: `audit-${Date.now()}`,
       timestamp: new Date().toLocaleString('id-ID'),
-      authorUid: firebaseUser?.uid,
+      authorUid: firebaseUser.uid,
       authorName: currentUser.name,
-      authorRole: currentUser.role,
+      authorRole: 'Admin',
       satkerNo: targetUser.assignedSatkerNo || 0,
       satkerName: targetUser.assignedSatker || 'Setditjen P2',
       indicatorKey: 'user_management',
@@ -908,18 +902,16 @@ export const GRCProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
     setAuditLogs((prev) => [auditEntry, ...prev]);
 
-    if (firebaseUser) {
-      setIsSyncingDb(true);
-      Promise.all([
-        deleteUserFromFirestore(targetUser),
-        createAuditLogInFirestore(auditEntry, firebaseUser.uid),
-      ])
-        .then(() => markSyncedNow())
-        .catch((err) =>
-          setDbSyncError(err instanceof Error ? err.message : 'Gagal menghapus pengguna di Firestore.')
-        )
-        .finally(() => setIsSyncingDb(false));
-    }
+    setIsSyncingDb(true);
+    Promise.all([
+      deleteUserFromFirestore(targetUser),
+      createAuditLogInFirestore(auditEntry, firebaseUser.uid),
+    ])
+      .then(() => markSyncedNow())
+      .catch((err) =>
+        setDbSyncError(err instanceof Error ? err.message : 'Gagal menghapus pengguna di Firestore.')
+      )
+      .finally(() => setIsSyncingDb(false));
 
     return { success: true };
   };
@@ -932,7 +924,7 @@ export const GRCProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const canEditSatker = (satker: SatkerData): boolean => {
-    if (!currentUser) return false;
+    if (!firebaseUser || !currentUser || currentUser.role === 'Viewer') return false;
     if (currentUser.role === 'Admin') return true;
     if (currentUser.role === 'Satker PIC') {
       return currentUser.assignedSatker?.toLowerCase() === satker.satker.toLowerCase();
@@ -946,8 +938,11 @@ export const GRCProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     newValue: number | null,
     reason: string
   ): { success: boolean; error?: string } => {
-    if (!currentUser) {
-      return { success: false, error: 'Anda harus login untuk memperbarui data.' };
+    if (!firebaseUser || !currentUser || currentUser.role === 'Viewer') {
+      return {
+        success: false,
+        error: 'Mode Baca Publik: Masuk sebagai Admin atau PIC terdaftar via menu Database untuk menyimpan perubahan.',
+      };
     }
 
     const targetSatker = satkers.find((s) => s.no === satkerNo);
@@ -990,7 +985,7 @@ export const GRCProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         minute: '2-digit',
         second: '2-digit',
       }),
-      authorUid: firebaseUser?.uid,
+      authorUid: firebaseUser.uid,
       authorName: currentUser.name,
       authorRole: currentUser.role,
       satkerNo,
@@ -1004,31 +999,36 @@ export const GRCProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     setAuditLogs((prev) => [auditEntry, ...prev]);
 
-    if (firebaseUser) {
-      setIsSyncingDb(true);
-      Promise.all([
-        saveSatkerToFirestore(finalSatker),
-        createAuditLogInFirestore(auditEntry, firebaseUser.uid),
-      ])
-        .then(() => markSyncedNow())
-        .catch((err) =>
-          setDbSyncError(err instanceof Error ? err.message : 'Gagal menyimpan perubahan skor ke Firestore.')
+    setIsSyncingDb(true);
+    Promise.all([
+      saveSatkerToFirestore(finalSatker),
+      createAuditLogInFirestore(auditEntry, firebaseUser.uid),
+    ])
+      .then(() => markSyncedNow())
+      .catch((err) =>
+        setDbSyncError(
+          err instanceof Error ? err.message : 'Gagal menyimpan perubahan skor ke Firestore.'
         )
-        .finally(() => setIsSyncingDb(false));
-    }
+      )
+      .finally(() => setIsSyncingDb(false));
 
     return { success: true };
   };
 
   const addComment = (satkerNo: number, indicatorKey: string, content: string) => {
-    if (!currentUser || !content.trim()) return;
+    if (!firebaseUser || !currentUser || currentUser.role === 'Viewer' || !content.trim()) {
+      if (!firebaseUser) {
+        setDbSyncError('Masuk sebagai Admin / Editor melalui menu Database untuk mengirim catatan.');
+      }
+      return;
+    }
 
     const newComment: ThreadedComment = {
       id: `comm-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
       satkerNo,
       indicatorKey,
       authorId: currentUser.id,
-      authorUid: firebaseUser?.uid,
+      authorUid: firebaseUser.uid,
       authorName: currentUser.name,
       authorRole: currentUser.role,
       content: content.trim(),
@@ -1044,42 +1044,51 @@ export const GRCProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     setComments((prev) => [newComment, ...prev]);
 
-    if (firebaseUser) {
-      setIsSyncingDb(true);
-      createCommentInFirestore(newComment, firebaseUser.uid)
-        .then(() => markSyncedNow())
-        .catch((err) =>
-          setDbSyncError(err instanceof Error ? err.message : 'Gagal menyimpan komentar ke Firestore.')
-        )
-        .finally(() => setIsSyncingDb(false));
-    }
+    setIsSyncingDb(true);
+    createCommentInFirestore(newComment, firebaseUser.uid)
+      .then(() => markSyncedNow())
+      .catch((err) =>
+        setDbSyncError(err instanceof Error ? err.message : 'Gagal menyimpan komentar ke Firestore.')
+      )
+      .finally(() => setIsSyncingDb(false));
   };
 
   const updateCommentStatus = (commentId: string, status: ThreadedComment['status']) => {
+    if (!firebaseUser || !currentUser || currentUser.role === 'Viewer') {
+      setDbSyncError('Masuk sebagai Admin / Auditor melalui menu Database untuk mengubah status catatan.');
+      return;
+    }
+
     const existing = comments.find((c) => c.id === commentId);
     setComments((prev) => prev.map((c) => (c.id === commentId ? { ...c, status } : c)));
 
-    if (firebaseUser && existing) {
+    if (existing) {
       setIsSyncingDb(true);
       updateCommentInFirestore({ ...existing, status }, firebaseUser.uid)
         .then(() => markSyncedNow())
         .catch((err) =>
-          setDbSyncError(err instanceof Error ? err.message : 'Gagal memperbarui status komentar di Firestore.')
+          setDbSyncError(
+            err instanceof Error ? err.message : 'Gagal memperbarui status komentar di Firestore.'
+          )
         )
         .finally(() => setIsSyncingDb(false));
     }
   };
 
   const bulkImportSatkers = (imported: SatkerData[]) => {
+    if (!firebaseUser || currentUser?.role !== 'Admin') {
+      setDbSyncError('Hanya Admin yang sudah masuk ke Database yang dapat mengimpor data ke Firestore.');
+      return;
+    }
+
     setSatkers(imported);
-    const authorName = currentUser?.name || 'Administrator';
-    const authorRole = currentUser?.role || 'Admin';
+    const authorName = currentUser.name || 'Administrator';
     const auditEntry: AuditLogEntry = {
       id: `audit-${Date.now()}`,
       timestamp: new Date().toLocaleString('id-ID'),
-      authorUid: firebaseUser?.uid,
+      authorUid: firebaseUser.uid,
       authorName,
-      authorRole,
+      authorRole: 'Admin',
       satkerNo: 0,
       satkerName: 'Semua Satker',
       indicatorKey: 'bulk_import',
@@ -1090,30 +1099,32 @@ export const GRCProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
     setAuditLogs((prev) => [auditEntry, ...prev]);
 
-    if (firebaseUser) {
-      setIsSyncingDb(true);
-      Promise.all([
-        batchSaveSatkersToFirestore(imported),
-        createAuditLogInFirestore(auditEntry, firebaseUser.uid),
-      ])
-        .then(() => markSyncedNow())
-        .catch((err) =>
-          setDbSyncError(err instanceof Error ? err.message : 'Gagal mengimpor data ke Firestore.')
-        )
-        .finally(() => setIsSyncingDb(false));
-    }
+    setIsSyncingDb(true);
+    Promise.all([
+      batchSaveSatkersToFirestore(imported),
+      createAuditLogInFirestore(auditEntry, firebaseUser.uid),
+    ])
+      .then(() => markSyncedNow())
+      .catch((err) =>
+        setDbSyncError(err instanceof Error ? err.message : 'Gagal mengimpor data ke Firestore.')
+      )
+      .finally(() => setIsSyncingDb(false));
   };
 
   const resetToBaselineData = () => {
+    if (!firebaseUser || currentUser?.role !== 'Admin') {
+      setDbSyncError('Hanya Admin yang sudah masuk ke Database yang dapat mereset data ke baseline.');
+      return;
+    }
+
     setSatkers(BASELINE_SATKERS);
-    const authorName = currentUser?.name || 'Administrator';
-    const authorRole = currentUser?.role || 'Admin';
+    const authorName = currentUser.name || 'Administrator';
     const auditEntry: AuditLogEntry = {
       id: `audit-${Date.now()}`,
       timestamp: new Date().toLocaleString('id-ID'),
-      authorUid: firebaseUser?.uid,
+      authorUid: firebaseUser.uid,
       authorName,
-      authorRole,
+      authorRole: 'Admin',
       satkerNo: 0,
       satkerName: 'Semua Satker',
       indicatorKey: 'system_reset',
@@ -1124,18 +1135,16 @@ export const GRCProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
     setAuditLogs((prev) => [auditEntry, ...prev]);
 
-    if (firebaseUser) {
-      setIsSyncingDb(true);
-      Promise.all([
-        batchSaveSatkersToFirestore(BASELINE_SATKERS),
-        createAuditLogInFirestore(auditEntry, firebaseUser.uid),
-      ])
-        .then(() => markSyncedNow())
-        .catch((err) =>
-          setDbSyncError(err instanceof Error ? err.message : 'Gagal mereset database Firestore.')
-        )
-        .finally(() => setIsSyncingDb(false));
-    }
+    setIsSyncingDb(true);
+    Promise.all([
+      batchSaveSatkersToFirestore(BASELINE_SATKERS),
+      createAuditLogInFirestore(auditEntry, firebaseUser.uid),
+    ])
+      .then(() => markSyncedNow())
+      .catch((err) =>
+        setDbSyncError(err instanceof Error ? err.message : 'Gagal mereset database Firestore.')
+      )
+      .finally(() => setIsSyncingDb(false));
   };
 
   return (
@@ -1176,6 +1185,7 @@ export const GRCProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setSpreadsheetEditLocked,
         updateAppConfiguration,
         firebaseUser,
+        isFirestoreLive,
         isDbConnected,
         isDbConnecting,
         isSyncingDb,
