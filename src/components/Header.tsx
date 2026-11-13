@@ -4,7 +4,6 @@ import { exportSatkersToCSV } from '../utils/grcCalculations';
 import { 
   Download, 
   Upload, 
-  RotateCcw, 
   Check, 
   ChevronDown,
   Users,
@@ -30,7 +29,6 @@ export const Header: React.FC<HeaderProps> = ({ onOpenImportModal, onOpenLoginMo
     logout,
     activeTab, 
     setActiveTab, 
-    resetToBaselineData,
     theme,
     toggleTheme,
     isFirestoreLive,
@@ -40,7 +38,6 @@ export const Header: React.FC<HeaderProps> = ({ onOpenImportModal, onOpenLoginMo
   } = useGRC();
 
   const [showUserDropdown, setShowUserDropdown] = useState(false);
-  const [showConfirmReset, setShowConfirmReset] = useState(false);
 
   const handleExportCSV = () => {
     const csvContent = exportSatkersToCSV(satkers);
@@ -176,7 +173,7 @@ export const Header: React.FC<HeaderProps> = ({ onOpenImportModal, onOpenLoginMo
                 className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-md hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
               >
                 <Download className="w-3.5 h-3.5 text-slate-600 dark:text-slate-300" />
-                <span>Ekspor CSV</span>
+                <span>Download</span>
               </button>
 
               <button
@@ -190,20 +187,7 @@ export const Header: React.FC<HeaderProps> = ({ onOpenImportModal, onOpenLoginMo
                 className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-md hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors whitespace-nowrap shrink-0 cursor-pointer disabled:opacity-45 disabled:cursor-not-allowed"
               >
                 <Upload className="w-3.5 h-3.5 text-slate-600 dark:text-slate-300" />
-                <span>Impor CSV</span>
-              </button>
-
-              <button
-                onClick={() => setShowConfirmReset(true)}
-                disabled={currentUser?.role !== 'Admin'}
-                title={
-                  currentUser?.role === 'Admin'
-                    ? 'Reset ke data baseline rujukan awal'
-                    : 'Reset baseline khusus Admin'
-                }
-                className="inline-flex items-center justify-center p-1.5 text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-md transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                <RotateCcw className="w-3.5 h-3.5" />
+                <span>Upload</span>
               </button>
 
               <button
@@ -427,37 +411,6 @@ export const Header: React.FC<HeaderProps> = ({ onOpenImportModal, onOpenLoginMo
           </button>
         </div>
       </div>
-
-      {/* Confirmation Modal for Reset Baseline */}
-      {showConfirmReset && (
-        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-slate-900 rounded-xl shadow-xl max-w-md w-full p-6 border border-slate-200 dark:border-slate-700">
-            <h3 className="text-base font-bold text-slate-900 dark:text-slate-100 mb-2">
-              Kembalikan ke Baseline Data MonGRC?
-            </h3>
-            <p className="text-sm text-slate-600 dark:text-slate-300 mb-5">
-              Seluruh modifikasi nilai lokal akan di-reset kembali ke nilai rujukan awal 57 Satker resmi Kemenkes RI. Riwayat perubahan akan mencatat tindakan reset ini.
-            </p>
-            <div className="flex justify-end gap-3">
-              <button
-                onClick={() => setShowConfirmReset(false)}
-                className="px-4 py-2 text-xs font-medium text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
-              >
-                Batal
-              </button>
-              <button
-                onClick={() => {
-                  resetToBaselineData();
-                  setShowConfirmReset(false);
-                }}
-                className="px-4 py-2 text-xs font-semibold text-white bg-blue-900 dark:bg-blue-700 rounded-lg hover:bg-blue-800 dark:hover:bg-blue-600 transition-colors"
-              >
-                Ya, Reset ke Baseline
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </header>
   );
 };
