@@ -299,7 +299,7 @@ export const SpreadsheetGrid: React.FC = () => {
               <span className="inline-flex items-center gap-1.5 text-amber-900 dark:text-amber-200 font-medium bg-amber-50 dark:bg-amber-950/50 px-2 py-0.5 rounded-sm border border-amber-200 dark:border-amber-800 text-[11px]">
                 <Lock className="w-3 h-3 text-amber-600 dark:text-amber-400 shrink-0" />
                 <span>
-                  Mode Terkunci (Hanya-Baca) &bull; Formulir spreadsheet diproteksi. {isAdmin ? 'Admin dapat membuka kunci pada menu di atas.' : 'Hanya Administrator yang berwenang membuka kunci.'}
+                  Mode Terkunci (Read-Only) &bull; Formulir spreadsheet diproteksi. {isAdmin ? 'Admin dapat membuka kunci pada menu di atas.' : 'Hanya Administrator yang dapat membuka kunci.'}
                 </span>
               </span>
             ) : (

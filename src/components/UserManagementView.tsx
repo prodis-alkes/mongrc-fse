@@ -193,7 +193,7 @@ export const UserManagementView: React.FC = () => {
             Manajemen Akun dan Otoritas
           </h1>
           <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">
-            Pengelolaan akun ASN, peran hak akses (RBAC), dan penugasan satuan kerja di lingkungan Ditjen P2 Kemenkes RI.
+            Pengelolaan akun dan hak akses.
           </p>
         </div>
 
