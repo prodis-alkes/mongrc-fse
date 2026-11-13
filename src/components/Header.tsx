@@ -72,9 +72,6 @@ export const Header: React.FC<HeaderProps> = ({ onOpenImportModal, onOpenLoginMo
               <span className="text-lg font-bold tracking-tight text-slate-900 dark:text-slate-100 whitespace-nowrap block leading-tight">
                 MonGRC
               </span>
-              <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400 whitespace-nowrap block">
-                Ditjen P2 Kemenkes RI
-              </span>
             </div>
           </div>
 
@@ -118,7 +115,7 @@ export const Header: React.FC<HeaderProps> = ({ onOpenImportModal, onOpenLoginMo
                   : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-50 dark:hover:bg-slate-800'
               }`}
             >
-              Log Update
+              Log
             </button>
             <button
               onClick={() => setActiveTab('users')}
