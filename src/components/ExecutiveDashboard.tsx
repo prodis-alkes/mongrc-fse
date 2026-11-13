@@ -228,7 +228,7 @@ export const ExecutiveDashboard: React.FC = () => {
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100 dark:border-slate-800">
             <div>
               <h2 className="text-base font-bold text-slate-900 dark:text-slate-100">
-                Profil Radar 11 Dimensi GRC
+                Profil Dimensi GRC
               </h2>
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
                 Bandingkan performa tata kelola Satker terhadap rata-rata nasional.
