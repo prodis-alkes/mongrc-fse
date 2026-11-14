@@ -120,13 +120,23 @@ export const SpreadsheetGrid: React.FC = () => {
   const handleSaveEdit = () => {
     if (!editingCell) return;
 
+    const meta = INDICATOR_METAS.find((m) => m.key === editingCell.fieldKey);
     let parsedVal: number | null = null;
     if (editInputVal.trim() !== '') {
       const cleaned = editInputVal.replace(',', '.').trim();
       parsedVal = parseFloat(cleaned);
-      if (isNaN(parsedVal)) {
-        setErrorMsg('Nilai input harus berupa angka yang valid.');
+      if (isNaN(parsedVal) || parsedVal < 0) {
+        setErrorMsg('Nilai input harus berupa angka valid (>= 0).');
         return;
+      }
+      if (meta) {
+        const maxAllowed = getDimensionMaxScore(meta);
+        if (parsedVal > maxAllowed) {
+          setErrorMsg(
+            `Nilai ${meta.label} tidak boleh melebihi skor maksimal dimensi (${maxAllowed}).`
+          );
+          return;
+        }
       }
     }
 

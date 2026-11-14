@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { BASELINE_SATKERS, INDICATOR_METAS } from '../data/baselineData';
 import {
   DEFAULT_ADMIN_EMAIL,
@@ -230,6 +230,16 @@ interface GRCContextType {
     newValue: number | null,
     reason: string
   ) => { success: boolean; error?: string };
+  saveSatkerScores: (
+    satkerNo: number,
+    updates: Partial<
+      Pick<
+        SatkerData,
+        'ski' | 'spip' | 'mri' | 'iepk' | 'spipt' | 'wbkRb' | 'sakip' | 'nka' | 'ikpa' | 'ipAsn' | 'arsip' | 'pekppp'
+      >
+    >,
+    reason: string
+  ) => Promise<{ success: boolean; error?: string }>;
   addComment: (satkerNo: number, indicatorKey: string, content: string) => void;
   updateCommentStatus: (commentId: string, status: ThreadedComment['status']) => void;
   bulkImportSatkers: (imported: SatkerData[]) => void;
@@ -435,6 +445,9 @@ export const GRCProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const isDbConnected = isSheetsLive;
 
+  const fetchAbortRef = useRef<AbortController | null>(null);
+  const activeSavesRef = useRef(0);
+
   const markSyncedNow = useCallback(() => {
     setIsSheetsLive(true);
     setLastSyncedAt(
@@ -449,14 +462,20 @@ export const GRCProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const refreshFromSpreadsheet = useCallback(
     async (targetUrl?: string): Promise<boolean> => {
       const urlToFetch = (targetUrl || appsScriptUrl || DEFAULT_APPS_SCRIPT_URL).trim();
+      fetchAbortRef.current?.abort();
+      const controller = new AbortController();
+      fetchAbortRef.current = controller;
+
       setIsSyncingDb(true);
       try {
-        const rows = await fetchSatkersFromAppsScript(urlToFetch);
+        const rows = await fetchSatkersFromAppsScript(urlToFetch, controller.signal);
+        if (controller.signal.aborted) return false;
         setSatkers(rows);
         setDbSyncError(null);
         markSyncedNow();
         return true;
       } catch (err) {
+        if ((err as { name?: string })?.name === 'AbortError') return false;
         setIsSheetsLive(false);
         setDbSyncError(
           err instanceof Error
@@ -465,21 +484,30 @@ export const GRCProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         );
         return false;
       } finally {
-        setIsSyncingDb(false);
+        if (fetchAbortRef.current === controller) {
+          setIsSyncingDb(false);
+        }
       }
     },
     [appsScriptUrl, markSyncedNow]
   );
 
-  // Initial load from Google Spreadsheet + periodic refresh every 30s when tab is active
+  // Initial load from Google Spreadsheet + periodic refresh every 30s when tab is active and idle
   useEffect(() => {
     void refreshFromSpreadsheet(appsScriptUrl);
     const intervalId = window.setInterval(() => {
-      if (typeof document !== 'undefined' && !document.hidden) {
+      if (
+        typeof document !== 'undefined' &&
+        !document.hidden &&
+        activeSavesRef.current === 0
+      ) {
         void refreshFromSpreadsheet(appsScriptUrl);
       }
     }, 30000);
-    return () => window.clearInterval(intervalId);
+    return () => {
+      window.clearInterval(intervalId);
+      fetchAbortRef.current?.abort();
+    };
   }, [appsScriptUrl, refreshFromSpreadsheet]);
 
   const updateAppsScriptUrl = async (
@@ -562,7 +590,7 @@ export const GRCProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   }, [auditLogs]);
 
-  const summaryStats = calculateSummaryStats(satkers);
+  const summaryStats = useMemo(() => calculateSummaryStats(satkers), [satkers]);
 
   const login = async (
     identifier: string,
@@ -1014,6 +1042,7 @@ export const GRCProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     setAuditLogs((prev) => [auditEntry, ...prev]);
 
+    activeSavesRef.current += 1;
     setIsSyncingDb(true);
     pushSatkerUpdateToAppsScript(appsScriptUrl, finalSatker, currentUser.name)
       .then((res) => {
@@ -1026,9 +1055,120 @@ export const GRCProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           if (res.message) setDbSyncError(res.message);
         }
       })
-      .finally(() => setIsSyncingDb(false));
+      .finally(() => {
+        activeSavesRef.current = Math.max(0, activeSavesRef.current - 1);
+        setIsSyncingDb(false);
+      });
 
     return { success: true };
+  };
+
+  const saveSatkerScores = async (
+    satkerNo: number,
+    updates: Partial<
+      Pick<
+        SatkerData,
+        'ski' | 'spip' | 'mri' | 'iepk' | 'spipt' | 'wbkRb' | 'sakip' | 'nka' | 'ikpa' | 'ipAsn' | 'arsip' | 'pekppp'
+      >
+    >,
+    reason: string
+  ): Promise<{ success: boolean; error?: string }> => {
+    if (!currentUser || currentUser.role === 'Viewer') {
+      return {
+        success: false,
+        error: 'Mode Baca Publik: Masuk sebagai Admin atau PIC terdaftar untuk menyimpan perubahan.',
+      };
+    }
+
+    const targetSatker = satkers.find((s) => s.no === satkerNo);
+    if (!targetSatker) {
+      return { success: false, error: 'Satuan kerja tidak ditemukan.' };
+    }
+
+    if (!canEditSatker(targetSatker)) {
+      return {
+        success: false,
+        error: `Akses ditolak: Anda login sebagai ${currentUser.role} (${currentUser.name}) dan tidak berwenang mengubah nilai untuk ${targetSatker.satker}.`,
+      };
+    }
+
+    const nowFormatted = new Date().toLocaleString('id-ID', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+    });
+
+    const newAuditEntries: AuditLogEntry[] = [];
+    const allowedRawKeys = new Set<string>(INDICATOR_METAS.map((m) => m.key));
+    const sanitizedUpdates: Partial<SatkerData> = {};
+
+    for (const [key, nextVal] of Object.entries(updates)) {
+      if (!allowedRawKeys.has(key)) continue;
+      const typedKey = key as keyof SatkerData;
+      const prevVal = targetSatker[typedKey] as number | null;
+      if (prevVal === nextVal) continue;
+
+      (sanitizedUpdates as Record<string, unknown>)[key] = nextVal;
+      const meta = INDICATOR_METAS.find((m) => m.key === key);
+      newAuditEntries.push({
+        id: `audit-${Date.now()}-${key}-${Math.random().toString(36).slice(2, 6)}`,
+        timestamp: nowFormatted,
+        authorName: currentUser.name,
+        authorRole: currentUser.role,
+        satkerNo,
+        satkerName: targetSatker.satker,
+        indicatorKey: key,
+        indicatorLabel: meta ? meta.label : key.toUpperCase(),
+        oldValue: prevVal !== null && prevVal !== undefined ? prevVal : '-',
+        newValue: nextVal !== null && nextVal !== undefined ? nextVal : '-',
+        reason: reason.trim() || `Pembaruan skor melalui modal detail oleh ${currentUser.name}`,
+      });
+    }
+
+    if (newAuditEntries.length === 0) {
+      return { success: true };
+    }
+
+    const updatedDraft: SatkerData = {
+      ...targetSatker,
+      ...sanitizedUpdates,
+      lastUpdatedBy: currentUser.name,
+      lastUpdatedAt: nowFormatted,
+    };
+
+    const finalSatker = recalculateSatkerScores(updatedDraft);
+    const previousSatker = targetSatker;
+
+    setSatkers((prev) => prev.map((s) => (s.no === satkerNo ? finalSatker : s)));
+    setAuditLogs((prev) => [...newAuditEntries, ...prev]);
+
+    activeSavesRef.current += 1;
+    setIsSyncingDb(true);
+    try {
+      // Always sends action: "update" with ONLY the single edited Satker object
+      const res = await pushSatkerUpdateToAppsScript(appsScriptUrl, finalSatker, currentUser.name);
+      if (!res.ok) {
+        if (res.doPostMissing) setDoPostMissing(true);
+        const msg = res.message || 'Gagal menyimpan pembaruan ke Google Spreadsheet.';
+        setDbSyncError(msg);
+        // Revert optimistic update if remote save fails
+        setSatkers((prev) => prev.map((s) => (s.no === satkerNo ? previousSatker : s)));
+        const failedIds = new Set(newAuditEntries.map((e) => e.id));
+        setAuditLogs((prev) => prev.filter((e) => !failedIds.has(e.id)));
+        return { success: false, error: msg };
+      }
+
+      setDoPostMissing(false);
+      setDbSyncError(null);
+      markSyncedNow();
+      return { success: true };
+    } finally {
+      activeSavesRef.current = Math.max(0, activeSavesRef.current - 1);
+      setIsSyncingDb(false);
+    }
   };
 
   const addComment = (satkerNo: number, indicatorKey: string, content: string) => {
@@ -1168,6 +1308,7 @@ export const GRCProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         auditLogs,
         summaryStats,
         updateSatkerField,
+        saveSatkerScores,
         addComment,
         updateCommentStatus,
         bulkImportSatkers,

@@ -2,7 +2,11 @@ import { AppConfiguration, SatkerCategory, SatkerData } from '../types/mongrc';
 import { recalculateSatkerScores } from '../utils/grcCalculations';
 
 export const DEFAULT_APPS_SCRIPT_URL =
-  'https://script.google.com/macros/s/AKfycbyYm43wOWuTZTUGIORPEa80xPbuPYlTrgvXdbNHVjCi3A-j7Zgo34JqBmeGK9uXySS8/exec';
+  'https://script.google.com/macros/s/AKfycbwtbnnwlfKzVWUrUrTxllF7-KhLQEtJ1cSPbdnqPc6he7gKnqmp4xdqXi_Jqu8iqvZp/exec';
+
+const LEGACY_DEFAULT_APPS_SCRIPT_URLS = new Set([
+  'https://script.google.com/macros/s/AKfycbyYm43wOWuTZTUGIORPEa80xPbuPYlTrgvXdbNHVjCi3A-j7Zgo34JqBmeGK9uXySS8/exec',
+]);
 
 const APPS_SCRIPT_URL_STORAGE_KEY = 'mongrc_apps_script_url_v1';
 
@@ -12,11 +16,49 @@ export const DEFAULT_APP_CONFIG: AppConfiguration = {
   appTitle: 'MonGRC Ditjen P2',
 };
 
+export interface SatkerRow extends Record<string, unknown> {
+  No: number;
+  'Unit Kerja / Satuan Kerja': string;
+  SATKER: string;
+  Kategori: string;
+  SKI: number;
+  SPIP: number;
+  MRI: number;
+  IEPK: number;
+  SPIPT: number;
+  'WBK/RB': number;
+  SAKIP: number;
+  NKA: number;
+  IKPA: number;
+  'IP-ASN': number;
+  ARSIP: number;
+  PEKPPP: number | '';
+  PSKI: number;
+  PSPIP: number;
+  PMRI: number;
+  PIEPK: number;
+  PWBKRB: number;
+  PSAKIP: number;
+  PNKA: number;
+  PIKPA: number;
+  PIPASN: number;
+  PARSIP: number;
+  PPEKPPP: number;
+  AVERAGE: number;
+  'Terakhir Diubah Oleh': string;
+  'Waktu Update': string;
+}
+
 export function getStoredAppsScriptUrl(): string {
   try {
     const saved = localStorage.getItem(APPS_SCRIPT_URL_STORAGE_KEY);
-    if (saved && saved.trim().startsWith('https://script.google.com/')) {
-      return saved.trim();
+    const trimmed = saved?.trim();
+    if (trimmed && trimmed.startsWith('https://script.google.com/')) {
+      if (LEGACY_DEFAULT_APPS_SCRIPT_URLS.has(trimmed)) {
+        localStorage.setItem(APPS_SCRIPT_URL_STORAGE_KEY, DEFAULT_APPS_SCRIPT_URL);
+        return DEFAULT_APPS_SCRIPT_URL;
+      }
+      return trimmed;
     }
   } catch {
     // ignore storage read error
@@ -113,7 +155,7 @@ export function mapSheetRowToSatker(raw: Record<string, unknown>): SatkerData | 
   return recalculateSatkerScores(draft);
 }
 
-export function serializeSatkerToSheetRow(satker: SatkerData): Record<string, unknown> {
+export function serializeSatkerToSheetRow(satker: SatkerData): SatkerRow {
   return {
     No: Math.trunc(satker.no),
     'Unit Kerja / Satuan Kerja': satker.unitKerja,
@@ -148,11 +190,15 @@ export function serializeSatkerToSheetRow(satker: SatkerData): Record<string, un
   };
 }
 
-export async function fetchSatkersFromAppsScript(url: string): Promise<SatkerData[]> {
+export async function fetchSatkersFromAppsScript(
+  url: string,
+  signal?: AbortSignal
+): Promise<SatkerData[]> {
   const targetUrl = (url || DEFAULT_APPS_SCRIPT_URL).trim();
   const response = await fetch(targetUrl, {
     method: 'GET',
     cache: 'no-store',
+    signal,
   });
 
   if (!response.ok) {
@@ -164,7 +210,9 @@ export async function fetchSatkersFromAppsScript(url: string): Promise<SatkerDat
   try {
     parsed = JSON.parse(text);
   } catch {
-    throw new Error('Respons Google Apps Script bukan JSON yang valid. Pastikan Web App di-deploy untuk akses publik.');
+    throw new Error(
+      'Respons Google Apps Script bukan JSON yang valid. Pastikan Web App di-deploy untuk akses publik.'
+    );
   }
 
   const rowsRaw = Array.isArray(parsed)
@@ -217,13 +265,14 @@ async function postToAppsScript(
       body: JSON.stringify(payload),
     });
 
-    const text = await response.text();
     if (!response.ok) {
       return {
         ok: false,
         message: `Gagal menulis ke Google Spreadsheet (HTTP ${response.status}).`,
       };
     }
+
+    const text = await response.text();
 
     if (
       text.includes('Script function not found: doPost') ||
@@ -238,16 +287,16 @@ async function postToAppsScript(
     }
 
     try {
-      const json = JSON.parse(text) as { status?: string; ok?: boolean; message?: string; error?: string };
-      if (json.status === 'error' || json.ok === false) {
+      const result = JSON.parse(text) as { status?: string; message?: string; error?: string };
+      if (result.status !== 'success') {
         return {
           ok: false,
-          message: json.message || json.error || 'Google Apps Script menolak pembaruan data.',
+          message:
+            result.message || result.error || 'Google Apps Script menolak pembaruan data.',
         };
       }
       return { ok: true };
     } catch {
-      // Some simple doPost implementations return plain text like "OK" or "Success"
       if (text.toLowerCase().includes('error') || text.trim().startsWith('<')) {
         return {
           ok: false,
@@ -260,8 +309,54 @@ async function postToAppsScript(
   } catch {
     return {
       ok: false,
-      message: 'Tidak dapat menghubungi endpoint Google Apps Script. Periksa koneksi jaringan atau izin deploy Web App.',
+      message:
+        'Tidak dapat menghubungi endpoint Google Apps Script. Periksa koneksi jaringan atau izin deploy Web App.',
     };
+  }
+}
+
+/**
+ * Saves a single edited Satker row to Google Spreadsheet using action: "update".
+ * Never triggers bulkUpdate on single-row edits.
+ */
+export async function handleSaveSatker(
+  editedRow: SatkerRow,
+  currentUser: string,
+  url?: string
+): Promise<void> {
+  const targetUrl = (url || DEFAULT_APPS_SCRIPT_URL).trim();
+  const payload = {
+    action: 'update',
+    no: editedRow.No,
+    satker: editedRow.SATKER,
+    row: {
+      ...editedRow,
+      'Terakhir Diubah Oleh': currentUser,
+      'Waktu Update': editedRow['Waktu Update'] || new Date().toLocaleString('id-ID'),
+    },
+  };
+
+  const response = await fetch(targetUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Gagal menulis ke Google Spreadsheet (HTTP ${response.status}).`);
+  }
+
+  const text = await response.text();
+  if (
+    text.includes('Script function not found: doPost') ||
+    text.includes('Fungsi skrip tidak ditemukan: doPost')
+  ) {
+    throw new Error('Fungsi doPost(e) tidak ditemukan pada Google Apps Script.');
+  }
+
+  const result = JSON.parse(text) as { status?: string; message?: string };
+  if (result.status !== 'success') {
+    throw new Error(result.message || 'Gagal memperbarui data Satker di Google Spreadsheet.');
   }
 }
 
@@ -270,16 +365,21 @@ export async function pushSatkerUpdateToAppsScript(
   satker: SatkerData,
   updatedBy: string
 ): Promise<AppsScriptWriteResult> {
-  const row = serializeSatkerToSheetRow(satker);
-  return postToAppsScript(url, {
-    action: 'update',
-    no: satker.no,
-    satker: satker.satker,
-    row,
-    data: row,
-    updatedBy,
-    updatedAt: satker.lastUpdatedAt || new Date().toISOString(),
-  });
+  const editedRow = serializeSatkerToSheetRow(satker);
+  try {
+    await handleSaveSatker(editedRow, updatedBy, url);
+    return { ok: true };
+  } catch (err) {
+    const msg =
+      err instanceof Error
+        ? err.message
+        : 'Tidak dapat menghubungi endpoint Google Apps Script.';
+    return {
+      ok: false,
+      doPostMissing: msg.toLowerCase().includes('dopost'),
+      message: msg,
+    };
+  }
 }
 
 export async function pushBulkSatkersToAppsScript(
@@ -318,7 +418,7 @@ export const APPS_SCRIPT_DO_POST_TEMPLATE = `function doPost(e) {
   }
 
   var rowObj = payload.row || payload.data;
-  if (rowObj) {
+  if (payload.action === 'update' && rowObj) {
     var targetNo = Number(payload.no || rowObj['No']);
     var noColIdx = headers.indexOf('No');
     var lastRow = sheet.getLastRow();
