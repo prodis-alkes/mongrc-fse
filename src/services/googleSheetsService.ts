@@ -8,10 +8,11 @@ import {
 import { recalculateSatkerScores } from '../utils/grcCalculations';
 
 export const DEFAULT_APPS_SCRIPT_URL =
-  'https://script.google.com/macros/s/AKfycbwtbnnwlfKzVWUrUrTxllF7-KhLQEtJ1cSPbdnqPc6he7gKnqmp4xdqXi_Jqu8iqvZp/exec';
+  'https://script.google.com/macros/s/AKfycbzoZdr-hj50E11OrjXY0y77I9k5v4d5lG3xehu9UQBTyYTwyYlg2cAxuhWjlqf-5iY/exec';
 
 const LEGACY_DEFAULT_APPS_SCRIPT_URLS = new Set([
   'https://script.google.com/macros/s/AKfycbyYm43wOWuTZTUGIORPEa80xPbuPYlTrgvXdbNHVjCi3A-j7Zgo34JqBmeGK9uXySS8/exec',
+  'https://script.google.com/macros/s/AKfycbwtbnnwlfKzVWUrUrTxllF7-KhLQEtJ1cSPbdnqPc6he7gKnqmp4xdqXi_Jqu8iqvZp/exec',
 ]);
 
 const APPS_SCRIPT_URL_STORAGE_KEY = 'mongrc_apps_script_url_v1';

@@ -16,10 +16,7 @@ import {
   Mail, 
   X, 
   AlertTriangle,
-  UserCheck,
-  RefreshCw,
-  KeyRound,
-  UploadCloud
+  UserCheck
 } from 'lucide-react';
 
 import { APPS_SCRIPT_DO_POST_TEMPLATE } from '../services/googleSheetsService';
@@ -33,29 +30,12 @@ export const UserManagementView: React.FC = () => {
     updateUser, 
     deleteUser, 
     toggleUserStatus,
-    provisionAllSatkerAccounts,
-    isProvisioningUsers,
-    isUsersSheetLive,
     usersSheetUnsupported,
-    isSyncingUsers,
-    refreshUsersFromSpreadsheet,
-    syncAllUsersToSpreadsheet,
     setIsLoginModalOpen,
   } = useGRC();
 
   const [showCodeTemplate, setShowCodeTemplate] = useState(false);
   const [copiedCode, setCopiedCode] = useState(false);
-  const [syncNotice, setSyncNotice] = useState<{ ok: boolean; text: string } | null>(null);
-
-  const [provisionStatus, setProvisionStatus] = useState<{
-    progress?: string;
-    result?: {
-      created: number;
-      linked: number;
-      failed: number;
-      errors: string[];
-    };
-  } | null>(null);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [roleFilter, setRoleFilter] = useState<string>('ALL');
@@ -283,75 +263,16 @@ export const UserManagementView: React.FC = () => {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2 border-b border-slate-200 dark:border-slate-800">
         <div>
           <h1 className="text-2xl font-extrabold text-slate-900 dark:text-slate-50 tracking-tight flex items-center gap-2.5">
-            <span>Manajemen Pengguna & Otoritas</span>
+            <span>Manajemen Pengguna</span>
           </h1>
           <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">
-            Pengelolaan akun ASN, peran hak akses (RBAC), dan penugasan satuan kerja di lingkungan Ditjen P2 Kemenkes RI.
+            Pengelolaan akun dan hak akses
           </p>
         </div>
 
         {/* Primary Actions */}
         {isAdmin && (
           <div className="flex flex-wrap items-center gap-2 shrink-0">
-            <button
-              type="button"
-              disabled={isSyncingUsers}
-              onClick={async () => {
-                setSyncNotice(null);
-                const res = await syncAllUsersToSpreadsheet();
-                if (res.success) {
-                  setSyncNotice({
-                    ok: true,
-                    text: `${res.count} akun pengguna berhasil dikirim dari aplikasi ke tab Users Google Spreadsheet.`,
-                  });
-                } else if (res.error) {
-                  setSyncNotice({ ok: false, text: res.error });
-                }
-              }}
-              title="Kirim seluruh pengguna dari aplikasi ke tab Users Google Spreadsheet terlebih dahulu"
-              className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg bg-emerald-700 hover:bg-emerald-600 text-white transition-colors cursor-pointer disabled:opacity-60"
-            >
-              <UploadCloud className="w-3.5 h-3.5" />
-              <span>Kirim Users ke Sheet</span>
-            </button>
-
-            <button
-              type="button"
-              disabled={isSyncingUsers}
-              onClick={() => void refreshUsersFromSpreadsheet()}
-              title="Muat ulang daftar pengguna langsung dari tab Users Google Spreadsheet"
-              className={`inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg border transition-colors cursor-pointer disabled:opacity-60 ${
-                isUsersSheetLive
-                  ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800 hover:bg-emerald-100'
-                  : 'bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700 hover:bg-slate-100'
-              }`}
-            >
-              <RefreshCw className={`w-3.5 h-3.5 ${isSyncingUsers ? 'animate-spin' : ''}`} />
-              <span>{isUsersSheetLive ? 'Tab Users Live' : 'Muat Tab Users'}</span>
-            </button>
-
-            <button
-              type="button"
-              disabled={isProvisioningUsers}
-              onClick={async () => {
-                setProvisionStatus({ progress: 'Memulai sinkronisasi 57 akun Satker...' });
-                const result = await provisionAllSatkerAccounts((done, total, email) => {
-                  setProvisionStatus({ progress: `Memproses ${done}/${total}: ${email}` });
-                });
-                setProvisionStatus({ result });
-              }}
-              className="inline-flex items-center gap-2 px-3.5 py-2 text-xs font-semibold text-blue-900 dark:text-blue-200 bg-blue-50 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-800 hover:bg-blue-100 dark:hover:bg-blue-900/60 rounded-lg transition-colors cursor-pointer disabled:opacity-60"
-            >
-              {isProvisioningUsers ? (
-                <RefreshCw className="w-4 h-4 animate-spin" />
-              ) : (
-                <KeyRound className="w-4 h-4" />
-              )}
-              <span>
-                {isProvisioningUsers ? 'Memproses 57 Akun...' : 'Sinkronkan 57 Akun Satker'}
-              </span>
-            </button>
-
             <button
               onClick={openAddModal}
               className="inline-flex items-center gap-2 px-3.5 py-2 text-xs font-semibold text-white bg-blue-900 dark:bg-blue-700 hover:bg-blue-800 dark:hover:bg-blue-600 rounded-lg shadow-sm transition-colors cursor-pointer"
@@ -362,26 +283,6 @@ export const UserManagementView: React.FC = () => {
           </div>
         )}
       </div>
-
-      {/* Sync status notification */}
-      {syncNotice && (
-        <div
-          className={`p-3 rounded-xl border text-xs flex items-center justify-between gap-2 ${
-            syncNotice.ok
-              ? 'bg-emerald-50 dark:bg-emerald-950/60 border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-200'
-              : 'bg-amber-50 dark:bg-amber-950/60 border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-200'
-          }`}
-        >
-          <span>{syncNotice.text}</span>
-          <button
-            type="button"
-            onClick={() => setSyncNotice(null)}
-            className="hover:underline shrink-0 cursor-pointer"
-          >
-            Tutup
-          </button>
-        </div>
-      )}
 
       {/* Warning if Apps Script code.gs does not yet route ?sheet=Users */}
       {usersSheetUnsupported && (
@@ -449,63 +350,7 @@ export const UserManagementView: React.FC = () => {
         </div>
       )}
 
-      {users.length < 59 && !provisionStatus && (
-        <div className="p-3.5 bg-blue-50/70 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800/80 rounded-xl text-xs text-blue-900 dark:text-blue-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div className="space-y-0.5">
-            <div className="font-bold">
-              Direktori baru memuat {users.length} akun
-            </div>
-            <p className="text-[11px] text-blue-800/90 dark:text-blue-300/90">
-              Klik <strong>Sinkronkan 57 Akun Satker</strong> untuk memastikan seluruh 57 akun Satker tersedia dengan kredensial default, atau gunakan <strong>Tambah Pengguna Baru</strong>.
-            </p>
-          </div>
-        </div>
-      )}
 
-      {/* Provisioning Status Banner */}
-      {provisionStatus && (
-        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-4 shadow-xs text-xs space-y-2">
-          {provisionStatus.progress && (
-            <div className="flex items-center gap-2 text-blue-900 dark:text-blue-300 font-medium">
-              <RefreshCw className="w-4 h-4 animate-spin shrink-0" />
-              <span>{provisionStatus.progress}</span>
-            </div>
-          )}
-          {provisionStatus.result && (
-            <div className="space-y-2">
-              <div className="flex items-center justify-between gap-2">
-                <div className="font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
-                  {provisionStatus.result.failed > 0 ? (
-                    <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
-                  ) : (
-                    <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
-                  )}
-                  <span>
-                    Hasil Sinkronisasi 57 Akun Login Satker (Default Password: <code className="font-mono">{DEFAULT_USER_PASSWORD}</code>)
-                  </span>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setProvisionStatus(null)}
-                  className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-              <div className="text-slate-600 dark:text-slate-300">
-                Akun baru ditambahkan: <strong>{provisionStatus.result.created}</strong> &middot; Akun diperbarui: <strong>{provisionStatus.result.linked}</strong> &middot; Gagal: <strong>{provisionStatus.result.failed}</strong>
-              </div>
-              {provisionStatus.result.errors.length > 0 && (
-                <div className="text-[11px] text-rose-700 dark:text-rose-300 max-h-24 overflow-y-auto">
-                  {provisionStatus.result.errors.slice(0, 5).map((err, idx) => (
-                    <div key={idx}>• {err}</div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      )}
 
       {/* KPI Overview Summary Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
