@@ -1,9 +1,6 @@
 import React, { useState } from 'react';
 import { useGRC } from '../context/GRCContext';
-import { exportSatkersToCSV } from '../utils/grcCalculations';
 import { 
-  Download, 
-  Upload, 
   ChevronDown,
   Users,
   LogOut,
@@ -11,17 +8,18 @@ import {
   Building2,
   Sun,
   Moon,
-  Database
+  Database,
+  Lock,
+  Unlock
 } from 'lucide-react';
 
 interface HeaderProps {
-  onOpenImportModal: () => void;
+  onOpenImportModal?: () => void;
   onOpenLoginModal?: () => void;
 }
 
-export const Header: React.FC<HeaderProps> = ({ onOpenImportModal, onOpenLoginModal }) => {
+export const Header: React.FC<HeaderProps> = ({ onOpenLoginModal }) => {
   const { 
-    satkers, 
     currentUser, 
     logout,
     activeTab, 
@@ -30,23 +28,15 @@ export const Header: React.FC<HeaderProps> = ({ onOpenImportModal, onOpenLoginMo
     toggleTheme,
     isSheetsLive,
     isSyncingDb,
-    setIsDatabaseModalOpen
+    setIsDatabaseModalOpen,
+    appConfig,
+    setSpreadsheetEditLocked
   } = useGRC();
 
-  const [showUserDropdown, setShowUserDropdown] = useState(false);
+  const isAdmin = currentUser?.role === 'Admin';
+  const isEditLocked = appConfig.spreadsheetEditLocked;
 
-  const handleExportCSV = () => {
-    const csvContent = exportSatkersToCSV(satkers);
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.setAttribute('download', `MonGRC_P2_${new Date().toISOString().slice(0, 10)}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-  };
+  const [showUserDropdown, setShowUserDropdown] = useState(false);
 
   const handleLogout = () => {
     setShowUserDropdown(false);
@@ -158,29 +148,33 @@ export const Header: React.FC<HeaderProps> = ({ onOpenImportModal, onOpenLoginMo
               </span>
             </button>
 
-            {/* Quick CSV Import / Export */}
+            {/* Spreadsheet Edit Lock & Google Sheets Status */}
             <div className="hidden sm:flex items-center gap-1.5 mr-0.5">
               <button
-                onClick={handleExportCSV}
-                title="Ekspor ke CSV resmi MonGRC"
-                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-md hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
-              >
-                <Download className="w-3.5 h-3.5 text-slate-600 dark:text-slate-300" />
-                <span>Download</span>
-              </button>
-
-              <button
-                onClick={onOpenImportModal}
-                disabled={currentUser?.role !== 'Admin'}
+                type="button"
+                disabled={!isAdmin}
+                onClick={() => setSpreadsheetEditLocked(!isEditLocked)}
                 title={
-                  currentUser?.role === 'Admin'
-                    ? 'Impor pembaruan dari berkas CSV'
-                    : 'Impor CSV khusus Admin (Masuk Admin untuk mengaktifkan)'
+                  isAdmin
+                    ? isEditLocked
+                      ? 'Spreadsheet terkunci (Hanya-Baca). Klik untuk membuka mode edit.'
+                      : 'Mode edit terbuka. Klik untuk mengunci spreadsheet.'
+                    : `Status pengeditan: ${isEditLocked ? 'Terkunci' : 'Terbuka'} (Khusus Admin)`
                 }
-                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-md hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors whitespace-nowrap shrink-0 cursor-pointer disabled:opacity-45 disabled:cursor-not-allowed"
+                className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-md border transition-colors whitespace-nowrap shrink-0 ${
+                  isAdmin
+                    ? isEditLocked
+                      ? 'bg-amber-50 dark:bg-amber-950/50 text-amber-900 dark:text-amber-200 border-amber-300 dark:border-amber-800 hover:bg-amber-100 dark:hover:bg-amber-900/60 cursor-pointer'
+                      : 'bg-emerald-50 dark:bg-emerald-950/50 text-emerald-900 dark:text-emerald-200 border-emerald-300 dark:border-emerald-800 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 cursor-pointer'
+                    : 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 border-slate-200 dark:border-slate-700 cursor-not-allowed opacity-80'
+                }`}
               >
-                <Upload className="w-3.5 h-3.5 text-slate-600 dark:text-slate-300" />
-                <span>Upload</span>
+                {isEditLocked ? (
+                  <Lock className={`w-3.5 h-3.5 shrink-0 ${isAdmin ? 'text-amber-600 dark:text-amber-400' : 'text-slate-400 dark:text-slate-500'}`} />
+                ) : (
+                  <Unlock className={`w-3.5 h-3.5 shrink-0 ${isAdmin ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-400 dark:text-slate-500'}`} />
+                )}
+                <span>{isEditLocked ? 'Terkunci' : 'Terbuka'}</span>
               </button>
 
               <button
@@ -197,7 +191,7 @@ export const Header: React.FC<HeaderProps> = ({ onOpenImportModal, onOpenLoginMo
                 }`}
               >
                 <Database className={`w-3.5 h-3.5 ${isSheetsLive ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-600 dark:text-slate-300'}`} />
-                <span className="hidden xl:inline">{isSheetsLive ? 'Live Sheet' : 'Sheet'}</span>
+                <span className="hidden xl:inline">{isSheetsLive ? 'Online' : 'Offline'}</span>
                 <span
                   className={`w-2 h-2 rounded-full ${
                     isSyncingDb

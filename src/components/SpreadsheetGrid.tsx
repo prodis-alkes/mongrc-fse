@@ -36,7 +36,6 @@ export const SpreadsheetGrid: React.FC = () => {
     canEditSatker,
     comments,
     appConfig,
-    setSpreadsheetEditLocked,
   } = useGRC();
 
   const isAdmin = currentUser?.role === 'Admin';
@@ -67,7 +66,6 @@ export const SpreadsheetGrid: React.FC = () => {
     maxScore: number;
     percentage: number;
   } | null>(null);
-  const [hoveredLockNotice, setHoveredLockNotice] = useState(false);
 
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -77,6 +75,13 @@ export const SpreadsheetGrid: React.FC = () => {
       inputRef.current.select();
     }
   }, [editingCell]);
+
+  useEffect(() => {
+    if (isEditLocked && editingCell) {
+      setEditingCell(null);
+      setErrorMsg(null);
+    }
+  }, [isEditLocked, editingCell]);
 
   const filteredSatkers = useMemo(() => {
     const q = searchFilter.trim().toLowerCase();
@@ -188,61 +193,8 @@ export const SpreadsheetGrid: React.FC = () => {
           </p>
         </div>
 
-        {/* Header Action Menu: Lock/Unlock Edit Toggle & Column View Mode Filter */}
+        {/* Header Action Menu: Column View Mode Filter */}
         <div className="flex flex-wrap items-center gap-2.5">
-          {/* Lock / Toggle Edit Button (Admin only; greyed out for other users) */}
-          {isAdmin ? (
-            <button
-              onClick={() => {
-                if (!isEditLocked && editingCell) {
-                  handleCancelEdit();
-                }
-                setSpreadsheetEditLocked(!isEditLocked);
-              }}
-              className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs font-semibold transition-all shadow-xs cursor-pointer ${
-                isEditLocked
-                  ? 'bg-amber-50 dark:bg-amber-950/50 text-amber-900 dark:text-amber-200 border-amber-300 dark:border-amber-800 hover:bg-amber-100 dark:hover:bg-amber-900/60 hover:border-amber-400'
-                  : 'bg-emerald-50 dark:bg-emerald-950/50 text-emerald-900 dark:text-emerald-200 border-emerald-300 dark:border-emerald-800 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 hover:border-emerald-400 ring-2 ring-emerald-400/20'
-              }`}
-              title={
-                isEditLocked
-                  ? 'Spreadsheet terkunci (Hanya-Baca). Klik untuk membuka mode pengeditan skor (Wewenang Admin).'
-                  : 'Mode pengeditan aktif. Klik untuk mengunci spreadsheet dan mencegah perubahan data.'
-              }
-            >
-              {isEditLocked ? (
-                <>
-                  <Lock className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
-                  <span>Kunci Edit: Aktif</span>
-                  <span className="text-[10px] px-1.5 py-0.5 rounded-xs bg-amber-200/80 dark:bg-amber-900 text-amber-950 dark:text-amber-200 font-medium">
-                    Read-Only
-                  </span>
-                </>
-              ) : (
-                <>
-                  <Unlock className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
-                  <span>Mode Edit: Terbuka</span>
-                  <span className="text-[10px] px-1.5 py-0.5 rounded-xs bg-emerald-200/80 dark:bg-emerald-900 text-emerald-950 dark:text-emerald-200 font-medium">
-                    Bisa Edit
-                  </span>
-                </>
-              )}
-            </button>
-          ) : (
-            <button
-              disabled
-              onMouseEnter={() => setHoveredLockNotice(true)}
-              onMouseLeave={() => setHoveredLockNotice(false)}
-              className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-xs font-medium bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 cursor-not-allowed opacity-80 select-none shadow-none"
-            >
-              <Lock className="w-3.5 h-3.5 text-slate-400 dark:text-slate-500 shrink-0" />
-              <span>{isEditLocked ? 'Kunci Edit: Aktif' : 'Mode Edit: Terbuka'}</span>
-              <span className="text-[10px] px-1.5 py-0.5 rounded-xs bg-slate-200 dark:bg-slate-700 text-slate-500 dark:text-slate-400 font-medium font-mono">
-                Khusus Admin
-              </span>
-            </button>
-          )}
-
           {/* Column View Mode Filter */}
           <div className="flex items-center gap-1 bg-white dark:bg-slate-900 p-1 rounded-lg border border-slate-200 dark:border-slate-700 text-xs shadow-xs">
             <Columns className="w-3.5 h-3.5 text-slate-400 ml-1.5" />
@@ -683,7 +635,7 @@ export const SpreadsheetGrid: React.FC = () => {
       </div>
 
       {/* Floating Bottom-Right Popup for View-Only / Lock / Auto-Calculated Notification (on hover or click) */}
-      {(errorMsg || hoveredLockNotice || hoveredNormalizedCell || (hoveredCell && !hoveredCell.canEdit)) && (
+      {(errorMsg || hoveredNormalizedCell || (hoveredCell && !hoveredCell.canEdit)) && (
         <div
           className={`fixed bottom-6 right-6 z-40 p-4 bg-amber-50 dark:bg-amber-950/95 border border-amber-300 dark:border-amber-800 rounded-xl shadow-xl text-amber-900 dark:text-amber-200 max-w-xs text-xs animate-in fade-in duration-150 ${
             errorMsg ? '' : 'pointer-events-none'
@@ -703,17 +655,6 @@ export const SpreadsheetGrid: React.FC = () => {
               >
                 <X className="w-4 h-4" />
               </button>
-            </div>
-          ) : hoveredLockNotice ? (
-            <div className="flex items-start gap-2">
-              <Lock className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
-              <div className="space-y-1">
-                <div className="font-bold">Mode Hanya-Baca (View-Only)</div>
-                <p className="text-[11px] leading-relaxed">
-                  Tombol kunci edit spreadsheet hanya dapat diubah oleh peran Admin. Peran Anda saat ini:{' '}
-                  <strong>{currentUser?.role || 'Tamu'}</strong>.
-                </p>
-              </div>
             </div>
           ) : hoveredNormalizedCell ? (
             <div className="space-y-2">
