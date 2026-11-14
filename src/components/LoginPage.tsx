@@ -26,20 +26,21 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onSuccess, onExploreAsGues
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage(null);
     setIsLoading(true);
 
-    setTimeout(() => {
-      const res = login(identifier, password);
-      setIsLoading(false);
+    try {
+      const res = await login(identifier, password);
       if (res.success) {
         if (onSuccess) onSuccess();
       } else {
         setErrorMessage(res.error || 'Gagal masuk. Periksa kembali kredensial Anda.');
       }
-    }, 200);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -108,7 +109,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onSuccess, onExploreAsGues
                 Masuk ke Akun Anda
               </h2>
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                Gunakan NIP, Email Dinas, atau Username
+                Gunakan Akun Google Admin atau Username / Email Satker
               </p>
             </div>
             <Lock className="w-5 h-5 text-slate-400 dark:text-slate-500" />
@@ -153,7 +154,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onSuccess, onExploreAsGues
             <div className="relative flex py-3 items-center">
               <div className="grow border-t border-slate-200 dark:border-slate-800" />
               <span className="shrink mx-3 text-[10px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">
-                atau masuk kredensial lokal
+                atau masuk dengan Email / Username
               </span>
               <div className="grow border-t border-slate-200 dark:border-slate-800" />
             </div>
@@ -163,7 +164,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onSuccess, onExploreAsGues
             {/* Identifier input */}
             <div>
               <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                Username / Email / NIP
+                Username atau Email
               </label>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400 dark:text-slate-500">
@@ -174,7 +175,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onSuccess, onExploreAsGues
                   required
                   value={identifier}
                   onChange={e => setIdentifier(e.target.value)}
-                  placeholder="Contoh: admin.p2 atau 19820514..."
+                  placeholder="Contoh: admin.p2 atau user_batam"
                   className="w-full pl-9 pr-3 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-blue-600 focus:bg-white dark:focus:bg-slate-800 transition-all text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500"
                 />
               </div>

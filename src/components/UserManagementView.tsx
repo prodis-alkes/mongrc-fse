@@ -1,12 +1,13 @@
 import React, { useState, useMemo } from 'react';
 import { useGRC } from '../context/GRCContext';
+import { DEFAULT_USER_PASSWORD } from '../data/satkerUsers';
+import { FIREBASE_PROJECT_ID } from '../services/firebase';
 import { UserProfile, UserRole } from '../types/mongrc';
 import { 
   Users, 
   UserPlus, 
   ShieldCheck, 
   Search, 
-  Filter, 
   Edit2, 
   Trash2, 
   CheckCircle2, 
@@ -15,9 +16,11 @@ import {
   Building2, 
   Mail, 
   X, 
-  Check, 
   AlertTriangle,
-  UserCheck
+  UserCheck,
+  RefreshCw,
+  KeyRound,
+  ExternalLink
 } from 'lucide-react';
 
 export const UserManagementView: React.FC = () => {
@@ -29,9 +32,22 @@ export const UserManagementView: React.FC = () => {
     updateUser, 
     deleteUser, 
     toggleUserStatus,
+    provisionAllSatkerAccounts,
+    isProvisioningUsers,
     isDbConnected,
     setIsDatabaseModalOpen,
   } = useGRC();
+
+  const [provisionStatus, setProvisionStatus] = useState<{
+    progress?: string;
+    result?: {
+      created: number;
+      linked: number;
+      failed: number;
+      authProviderDisabled: boolean;
+      errors: string[];
+    };
+  } | null>(null);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [roleFilter, setRoleFilter] = useState<string>('ALL');
@@ -109,7 +125,7 @@ export const UserManagementView: React.FC = () => {
     setIsModalOpen(true);
   };
 
-  const handleSaveUser = (e: React.FormEvent) => {
+  const handleSaveUser = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormError(null);
 
@@ -151,7 +167,7 @@ export const UserManagementView: React.FC = () => {
       }
     } else {
       // Create
-      const res = addUser({
+      const res = await addUser({
         name: formName.trim(),
         username: formUsername.trim(),
         nip: formNip.trim(),
@@ -162,7 +178,8 @@ export const UserManagementView: React.FC = () => {
         assignedSatkerNo: formRole === 'Satker PIC' ? formAssignedSatkerNo : undefined,
         avatarInitials: initials,
         status: formStatus,
-        password: formPassword.trim() || 'kemenkes123',
+        password: formPassword.trim() || DEFAULT_USER_PASSWORD,
+        provisionAuthLogin: true,
       });
 
       if (!res.success) {
@@ -235,17 +252,105 @@ export const UserManagementView: React.FC = () => {
           </p>
         </div>
 
-        {/* Primary Add User Action */}
+        {/* Primary Actions */}
         {isAdmin && (
-          <button
-            onClick={openAddModal}
-            className="inline-flex items-center gap-2 px-3.5 py-2 text-xs font-semibold text-white bg-blue-900 dark:bg-blue-700 hover:bg-blue-800 dark:hover:bg-blue-600 rounded-lg shadow-sm transition-colors cursor-pointer shrink-0"
-          >
-            <UserPlus className="w-4 h-4" />
-            <span>Tambah Pengguna Baru</span>
-          </button>
+          <div className="flex flex-wrap items-center gap-2 shrink-0">
+            <button
+              type="button"
+              disabled={isProvisioningUsers}
+              onClick={async () => {
+                setProvisionStatus({ progress: 'Memulai sinkronisasi 57 akun Satker...' });
+                const result = await provisionAllSatkerAccounts((done, total, email) => {
+                  setProvisionStatus({ progress: `Memproses ${done}/${total}: ${email}` });
+                });
+                setProvisionStatus({ result });
+              }}
+              className="inline-flex items-center gap-2 px-3.5 py-2 text-xs font-semibold text-blue-900 dark:text-blue-200 bg-blue-50 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-800 hover:bg-blue-100 dark:hover:bg-blue-900/60 rounded-lg transition-colors cursor-pointer disabled:opacity-60"
+            >
+              {isProvisioningUsers ? (
+                <RefreshCw className="w-4 h-4 animate-spin" />
+              ) : (
+                <KeyRound className="w-4 h-4" />
+              )}
+              <span>
+                {isProvisioningUsers ? 'Memproses 57 Akun...' : 'Provision 57 Login Satker'}
+              </span>
+            </button>
+
+            <button
+              onClick={openAddModal}
+              className="inline-flex items-center gap-2 px-3.5 py-2 text-xs font-semibold text-white bg-blue-900 dark:bg-blue-700 hover:bg-blue-800 dark:hover:bg-blue-600 rounded-lg shadow-sm transition-colors cursor-pointer"
+            >
+              <UserPlus className="w-4 h-4" />
+              <span>Tambah Pengguna Baru</span>
+            </button>
+          </div>
         )}
       </div>
+
+      {/* Provisioning Status Banner */}
+      {provisionStatus && (
+        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-4 shadow-xs text-xs space-y-2">
+          {provisionStatus.progress && (
+            <div className="flex items-center gap-2 text-blue-900 dark:text-blue-300 font-medium">
+              <RefreshCw className="w-4 h-4 animate-spin shrink-0" />
+              <span>{provisionStatus.progress}</span>
+            </div>
+          )}
+          {provisionStatus.result && (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <div className="font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+                  {provisionStatus.result.authProviderDisabled || provisionStatus.result.failed > 0 ? (
+                    <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
+                  ) : (
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                  )}
+                  <span>
+                    Hasil Provisioning 57 Akun Login Satker (Default Password: <code className="font-mono">{DEFAULT_USER_PASSWORD}</code>)
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setProvisionStatus(null)}
+                  className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+              <div className="text-slate-600 dark:text-slate-300">
+                Akun Auth baru dibuat: <strong>{provisionStatus.result.created}</strong> &middot; Akun Auth terhubung: <strong>{provisionStatus.result.linked}</strong> &middot; Gagal: <strong>{provisionStatus.result.failed}</strong>
+              </div>
+              {provisionStatus.result.authProviderDisabled && (
+                <div className="p-3 rounded-lg bg-amber-50 dark:bg-amber-950/50 border border-amber-200 dark:border-amber-800 text-amber-900 dark:text-amber-200 space-y-1.5">
+                  <div className="font-semibold">
+                    Provider Email/Password belum aktif di Firebase Authentication.
+                  </div>
+                  <p className="text-[11px] leading-relaxed">
+                    Seluruh 57 profil &amp; role Satker telah disinkronkan ke Firestore, namun akun login Email/Password baru dapat dibuat setelah Anda mengaktifkan metode login <strong>Email/Password</strong> di Firebase Console (Authentication &rarr; Sign-in method &rarr; Email/Password &rarr; Enable), lalu klik kembali tombol <strong>Provision 57 Login Satker</strong>.
+                  </p>
+                  <a
+                    href={`https://console.firebase.google.com/project/${FIREBASE_PROJECT_ID}/authentication/providers`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1 font-semibold text-blue-800 dark:text-blue-300 hover:underline"
+                  >
+                    <span>Buka Firebase Console Sign-in Providers</span>
+                    <ExternalLink className="w-3.5 h-3.5" />
+                  </a>
+                </div>
+              )}
+              {!provisionStatus.result.authProviderDisabled && provisionStatus.result.errors.length > 0 && (
+                <div className="text-[11px] text-rose-700 dark:text-rose-300 max-h-24 overflow-y-auto">
+                  {provisionStatus.result.errors.slice(0, 5).map((err, idx) => (
+                    <div key={idx}>• {err}</div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* KPI Overview Summary Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
@@ -618,7 +723,7 @@ export const UserManagementView: React.FC = () => {
                     type="text"
                     value={formPassword}
                     onChange={e => setFormPassword(e.target.value)}
-                    placeholder={editingUserId ? 'Kosongkan jika tidak diubah' : 'Default: kemenkes123'}
+                    placeholder={editingUserId ? 'Kosongkan jika tidak diubah' : `Default: ${DEFAULT_USER_PASSWORD}`}
                     className="w-full px-3 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-hidden focus:ring-2 focus:ring-blue-600 focus:bg-white dark:focus:bg-slate-800 font-mono"
                   />
                 </div>

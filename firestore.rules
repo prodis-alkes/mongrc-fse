@@ -71,19 +71,37 @@ service cloud.firestore {
              get(/databases/$(database)/documents/config/app).data.spreadsheetEditLocked == true;
     }
 
+    function hasUidRoleDoc() {
+      return isAuthenticated() &&
+             exists(/databases/$(database)/documents/uidRoles/$(request.auth.uid));
+    }
+
     function isAssignedSatkerPic(satkerNo) {
-      return isVerifiedEmail() &&
-             exists(/databases/$(database)/documents/userRoles/$(authEmailLower())) &&
-             get(/databases/$(database)/documents/userRoles/$(authEmailLower())).data.role == 'Satker PIC' &&
-             get(/databases/$(database)/documents/userRoles/$(authEmailLower())).data.status == 'active' &&
-             get(/databases/$(database)/documents/userRoles/$(authEmailLower())).data.assignedSatkerNo == satkerNo;
+      return (
+        hasUidRoleDoc() &&
+        get(/databases/$(database)/documents/uidRoles/$(request.auth.uid)).data.role == 'Satker PIC' &&
+        get(/databases/$(database)/documents/uidRoles/$(request.auth.uid)).data.status == 'active' &&
+        get(/databases/$(database)/documents/uidRoles/$(request.auth.uid)).data.assignedSatkerNo == satkerNo
+      ) || (
+        isVerifiedEmail() &&
+        exists(/databases/$(database)/documents/userRoles/$(authEmailLower())) &&
+        get(/databases/$(database)/documents/userRoles/$(authEmailLower())).data.role == 'Satker PIC' &&
+        get(/databases/$(database)/documents/userRoles/$(authEmailLower())).data.status == 'active' &&
+        get(/databases/$(database)/documents/userRoles/$(authEmailLower())).data.assignedSatkerNo == satkerNo
+      );
     }
 
     function isAuditorUser() {
-      return isVerifiedEmail() &&
-             exists(/databases/$(database)/documents/userRoles/$(authEmailLower())) &&
-             get(/databases/$(database)/documents/userRoles/$(authEmailLower())).data.role == 'Auditor' &&
-             get(/databases/$(database)/documents/userRoles/$(authEmailLower())).data.status == 'active';
+      return (
+        hasUidRoleDoc() &&
+        get(/databases/$(database)/documents/uidRoles/$(request.auth.uid)).data.role == 'Auditor' &&
+        get(/databases/$(database)/documents/uidRoles/$(request.auth.uid)).data.status == 'active'
+      ) || (
+        isVerifiedEmail() &&
+        exists(/databases/$(database)/documents/userRoles/$(authEmailLower())) &&
+        get(/databases/$(database)/documents/userRoles/$(authEmailLower())).data.role == 'Auditor' &&
+        get(/databases/$(database)/documents/userRoles/$(authEmailLower())).data.status == 'active'
+      );
     }
 
     // =========================================================================
@@ -152,6 +170,18 @@ service cloud.firestore {
     function isValidUserRoleEntry(data, emailKey) {
       return data.keys().hasAll(['email', 'userId', 'role', 'status']) &&
              data.email.lower() == emailKey &&
+             isNonEmptyString(data.userId, 128) &&
+             data.role in ['Admin', 'Auditor', 'Satker PIC'] &&
+             data.status in ['active', 'inactive'] &&
+             isOptionalString(data, 'assignedSatker', 120) &&
+             (!('assignedSatkerNo' in data) || data.assignedSatkerNo == null || (data.assignedSatkerNo is int && data.assignedSatkerNo >= 0 && data.assignedSatkerNo <= 999));
+    }
+
+    function isValidUidRoleEntry(data, uidKey) {
+      return data.keys().hasAll(['uid', 'email', 'userId', 'role', 'status']) &&
+             data.uid == uidKey &&
+             isNonEmptyString(data.uid, 128) &&
+             isNonEmptyString(data.email, 160) &&
              isNonEmptyString(data.userId, 128) &&
              data.role in ['Admin', 'Auditor', 'Satker PIC'] &&
              data.status in ['active', 'inactive'] &&
@@ -233,6 +263,7 @@ service cloud.firestore {
     match /users/{userId} {
       allow get: if isValidId(userId) && (
         isOwner(userId) ||
+        (isAuthenticated() && resource.data.uid == request.auth.uid) ||
         (isVerifiedEmail() && resource.data.email.lower() == authEmailLower()) ||
         isAdmin()
       );
@@ -269,6 +300,13 @@ service cloud.firestore {
       allow list: if isBootstrapAdmin();
       allow create, update: if isValidEmailKey(emailKey) && isAdmin() && isValidUserRoleEntry(request.resource.data, emailKey);
       allow delete: if isValidEmailKey(emailKey) && isAdmin();
+    }
+
+    match /uidRoles/{uid} {
+      allow get: if isValidId(uid) && (isOwner(uid) || isAdmin());
+      allow list: if isBootstrapAdmin();
+      allow create, update: if isValidId(uid) && isAdmin() && isValidUidRoleEntry(request.resource.data, uid);
+      allow delete: if isValidId(uid) && isAdmin();
     }
 
     match /admins/{uid} {

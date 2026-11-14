@@ -106,6 +106,21 @@ function sanitizeUserRoleEntry(user: UserProfile): Record<string, unknown> {
   return entry;
 }
 
+function sanitizeUidRoleEntry(user: UserProfile, uid: string): Record<string, unknown> {
+  const entry: Record<string, unknown> = {
+    uid,
+    email: user.email.trim().toLowerCase(),
+    userId: user.id,
+    role: user.role,
+    status: user.status,
+  };
+  if (user.assignedSatker) entry.assignedSatker = user.assignedSatker;
+  if (typeof user.assignedSatkerNo === 'number') {
+    entry.assignedSatkerNo = Math.trunc(user.assignedSatkerNo);
+  }
+  return entry;
+}
+
 function sanitizeAuditLogForFirestore(
   entry: AuditLogEntry,
   authorUid: string
@@ -155,39 +170,46 @@ export async function checkIsDatabaseSeeded(): Promise<boolean> {
 
 export async function resolveUserRoleFromFirestore(
   email: string,
-  uid: string
+  uid: string,
+  emailVerified = false
 ): Promise<{
   isAdmin: boolean;
   userDoc: UserProfile | null;
 }> {
   const emailLower = email.trim().toLowerCase();
-  const isBootstrap = emailLower === BOOTSTRAP_ADMIN_EMAIL.toLowerCase();
+  const isBootstrap = emailVerified && emailLower === BOOTSTRAP_ADMIN_EMAIL.toLowerCase();
 
   try {
     const adminSnap = await getDoc(doc(db, 'admins', uid));
-    const roleSnap = await getDoc(doc(db, 'userRoles', emailLower));
+    const uidRoleSnap = await getDoc(doc(db, 'uidRoles', uid)).catch(() => null);
+
+    let emailRoleSnap = null;
+    if (emailVerified && emailLower) {
+      emailRoleSnap = await getDoc(doc(db, 'userRoles', emailLower)).catch(() => null);
+    }
+
+    const activeRoleData = uidRoleSnap?.exists()
+      ? uidRoleSnap.data()
+      : emailRoleSnap?.exists()
+      ? emailRoleSnap.data()
+      : null;
 
     let userDoc: UserProfile | null = null;
-    if (roleSnap.exists()) {
-      const roleData = roleSnap.data();
-      if (roleData?.userId) {
-        const uSnap = await getDoc(doc(db, 'users', String(roleData.userId)));
-        if (uSnap.exists()) {
-          userDoc = uSnap.data() as UserProfile;
-        }
+    if (activeRoleData?.userId) {
+      const uSnap = await getDoc(doc(db, 'users', String(activeRoleData.userId))).catch(() => null);
+      if (uSnap?.exists()) {
+        userDoc = uSnap.data() as UserProfile;
       }
     }
 
     const isAdmin =
       isBootstrap ||
       adminSnap.exists() ||
-      (roleSnap.exists() &&
-        roleSnap.data()?.role === 'Admin' &&
-        roleSnap.data()?.status === 'active');
+      (activeRoleData?.role === 'Admin' && activeRoleData?.status === 'active');
 
     return { isAdmin, userDoc };
   } catch (err) {
-    handleFirestoreError(err, OperationType.GET, `userRoles/${emailLower}`);
+    handleFirestoreError(err, OperationType.GET, `uidRoles/${uid}`);
     return { isAdmin: isBootstrap, userDoc: null };
   }
 }
@@ -275,13 +297,17 @@ export function subscribeToComments(
 
 export function subscribeToUsers(
   isBootstrapAdmin: boolean,
+  authUid: string | null,
   authEmail: string | null,
+  emailVerified: boolean,
   onData: (users: UserProfile[]) => void,
   onError: (msg: string) => void
 ): Unsubscribe {
   const targetQuery = isBootstrapAdmin
     ? collection(db, 'users')
-    : authEmail
+    : authUid
+    ? query(collection(db, 'users'), where('uid', '==', authUid))
+    : authEmail && emailVerified
     ? query(
         collection(db, 'users'),
         where('email', '==', authEmail.trim().toLowerCase())
@@ -305,6 +331,22 @@ export function subscribeToUsers(
   );
 }
 
+interface BatchWriteOp {
+  ref: ReturnType<typeof doc>;
+  data: Record<string, unknown>;
+}
+
+async function commitChunkedWrites(ops: BatchWriteOp[], chunkSize = 350): Promise<void> {
+  for (let i = 0; i < ops.length; i += chunkSize) {
+    const batch = writeBatch(db);
+    const slice = ops.slice(i, i + chunkSize);
+    for (const op of slice) {
+      batch.set(op.ref, op.data);
+    }
+    await batch.commit();
+  }
+}
+
 export async function seedInitialDatabase(params: {
   satkers: SatkerData[];
   users: UserProfile[];
@@ -314,43 +356,79 @@ export async function seedInitialDatabase(params: {
   authorUid: string;
   updatedBy: string;
 }): Promise<void> {
-  const batch = writeBatch(db);
+  const ops: BatchWriteOp[] = [];
 
   for (const s of params.satkers) {
-    batch.set(doc(db, 'satkers', String(s.no)), sanitizeSatkerForFirestore(s));
+    ops.push({
+      ref: doc(db, 'satkers', String(s.no)),
+      data: sanitizeSatkerForFirestore(s),
+    });
   }
 
   for (const u of params.users) {
-    batch.set(doc(db, 'users', u.id), sanitizeUserForFirestore(u));
-    batch.set(
-      doc(db, 'userRoles', u.email.trim().toLowerCase()),
-      sanitizeUserRoleEntry(u)
-    );
+    ops.push({
+      ref: doc(db, 'users', u.id),
+      data: sanitizeUserForFirestore(u),
+    });
+    ops.push({
+      ref: doc(db, 'userRoles', u.email.trim().toLowerCase()),
+      data: sanitizeUserRoleEntry(u),
+    });
+    if (u.uid) {
+      ops.push({
+        ref: doc(db, 'uidRoles', u.uid),
+        data: sanitizeUidRoleEntry(u, u.uid),
+      });
+    }
   }
 
-  batch.set(doc(db, 'config', 'app'), {
-    appTitle: params.config.appTitle,
-    evaluationPeriod: params.config.evaluationPeriod,
-    spreadsheetEditLocked: Boolean(params.config.spreadsheetEditLocked),
-    updatedBy: params.updatedBy,
-    updatedAt: new Date().toISOString(),
+  ops.push({
+    ref: doc(db, 'config', 'app'),
+    data: {
+      appTitle: params.config.appTitle,
+      evaluationPeriod: params.config.evaluationPeriod,
+      spreadsheetEditLocked: Boolean(params.config.spreadsheetEditLocked),
+      updatedBy: params.updatedBy,
+      updatedAt: new Date().toISOString(),
+    },
   });
 
   for (const log of params.auditLogs) {
-    batch.set(
-      doc(db, 'auditLogs', log.id),
-      sanitizeAuditLogForFirestore(log, params.authorUid)
-    );
+    ops.push({
+      ref: doc(db, 'auditLogs', log.id),
+      data: sanitizeAuditLogForFirestore(log, params.authorUid),
+    });
   }
 
   for (const comment of params.comments) {
-    batch.set(
-      doc(db, 'comments', comment.id),
-      sanitizeCommentForFirestore(comment, params.authorUid)
-    );
+    ops.push({
+      ref: doc(db, 'comments', comment.id),
+      data: sanitizeCommentForFirestore(comment, params.authorUid),
+    });
   }
 
-  await batch.commit();
+  await commitChunkedWrites(ops);
+}
+
+export async function upsertUsersToFirestore(usersToSave: UserProfile[]): Promise<void> {
+  const ops: BatchWriteOp[] = [];
+  for (const u of usersToSave) {
+    ops.push({
+      ref: doc(db, 'users', u.id),
+      data: sanitizeUserForFirestore(u),
+    });
+    ops.push({
+      ref: doc(db, 'userRoles', u.email.trim().toLowerCase()),
+      data: sanitizeUserRoleEntry(u),
+    });
+    if (u.uid) {
+      ops.push({
+        ref: doc(db, 'uidRoles', u.uid),
+        data: sanitizeUidRoleEntry(u, u.uid),
+      });
+    }
+  }
+  await commitChunkedWrites(ops);
 }
 
 export async function saveSatkerToFirestore(satker: SatkerData): Promise<void> {
@@ -408,6 +486,9 @@ export async function saveUserToFirestore(
       batch.delete(doc(db, 'userRoles', previousEmail.trim().toLowerCase()));
     }
     batch.set(doc(db, 'userRoles', nextEmailLower), sanitizeUserRoleEntry(user));
+    if (user.uid) {
+      batch.set(doc(db, 'uidRoles', user.uid), sanitizeUidRoleEntry(user, user.uid));
+    }
     await batch.commit();
   } catch (err) {
     const info = handleFirestoreError(err, OperationType.WRITE, `users/${user.id}`);
@@ -420,6 +501,9 @@ export async function deleteUserFromFirestore(user: UserProfile): Promise<void> 
     const batch = writeBatch(db);
     batch.delete(doc(db, 'users', user.id));
     batch.delete(doc(db, 'userRoles', user.email.trim().toLowerCase()));
+    if (user.uid) {
+      batch.delete(doc(db, 'uidRoles', user.uid));
+    }
     await batch.commit();
   } catch (err) {
     const info = handleFirestoreError(err, OperationType.DELETE, `users/${user.id}`);

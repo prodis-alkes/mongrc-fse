@@ -353,12 +353,12 @@ export const Header: React.FC<HeaderProps> = ({ onOpenImportModal, onOpenLoginMo
               </div>
             ) : (
               <button
-                onClick={() => setIsDatabaseModalOpen(true)}
-                title="Mode Baca Publik — Masuk sebagai Admin/Editor untuk mengedit data"
+                onClick={() => (onOpenLoginModal ? onOpenLoginModal() : setIsDatabaseModalOpen(true))}
+                title="Masuk dengan Username/Email Satker atau Google Admin"
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-blue-900 hover:bg-blue-800 dark:bg-blue-700 dark:hover:bg-blue-600 rounded-lg shadow-xs transition-colors cursor-pointer whitespace-nowrap"
               >
                 <LogIn className="w-3.5 h-3.5" />
-                <span>Masuk Admin</span>
+                <span>Masuk</span>
               </button>
             )}
           </div>

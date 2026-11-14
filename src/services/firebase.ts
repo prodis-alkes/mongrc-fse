@@ -2,6 +2,12 @@ import { initializeApp, getApps, getApp } from 'firebase/app';
 import {
   getAuth,
   signInWithPopup,
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  sendPasswordResetEmail,
+  EmailAuthProvider,
+  linkWithCredential,
+  updatePassword,
   GoogleAuthProvider,
   onAuthStateChanged,
   signOut,
@@ -111,6 +117,110 @@ export const subscribeToFirebaseAuth = (
 export const signInWithGoogle = async (): Promise<User> => {
   const result = await signInWithPopup(auth, provider);
   return result.user;
+};
+
+export const signInWithEmail = async (
+  email: string,
+  password: string
+): Promise<User> => {
+  const result = await signInWithEmailAndPassword(
+    auth,
+    email.trim().toLowerCase(),
+    password
+  );
+  return result.user;
+};
+
+export const sendResetPassword = async (email: string): Promise<void> => {
+  await sendPasswordResetEmail(auth, email.trim().toLowerCase());
+};
+
+const PROVISIONING_APP_NAME = 'mon-grc-provisioning';
+
+function getProvisioningAuth() {
+  const existingApp = getApps().find((a) => a.name === PROVISIONING_APP_NAME);
+  const provisioningApp = existingApp || initializeApp(firebaseConfig, PROVISIONING_APP_NAME);
+  return getAuth(provisioningApp);
+}
+
+export const provisionAuthAccountAsAdmin = async (
+  email: string,
+  password: string
+): Promise<{ uid: string; created: boolean }> => {
+  const emailLower = email.trim().toLowerCase();
+  const provisioningAuth = getProvisioningAuth();
+  try {
+    const cred = await createUserWithEmailAndPassword(provisioningAuth, emailLower, password);
+    return { uid: cred.user.uid, created: true };
+  } catch (err) {
+    const code = getFirebaseAuthErrorCode(err);
+    if (code === 'auth/email-already-in-use') {
+      const cred = await signInWithEmailAndPassword(provisioningAuth, emailLower, password);
+      return { uid: cred.user.uid, created: false };
+    }
+    throw err;
+  } finally {
+    await signOut(provisioningAuth).catch(() => {});
+  }
+};
+
+export function getFirebaseAuthErrorCode(error: unknown): string {
+  if (error && typeof error === 'object' && 'code' in error) {
+    return String((error as { code?: unknown }).code || '');
+  }
+  return '';
+}
+
+export function formatFirebaseAuthError(error: unknown): string {
+  const code = getFirebaseAuthErrorCode(error);
+  switch (code) {
+    case 'auth/operation-not-allowed':
+      return 'Provider Email/Password belum diaktifkan di Firebase Console (Authentication → Sign-in method → Email/Password → Enable).';
+    case 'auth/invalid-credential':
+    case 'auth/wrong-password':
+    case 'auth/user-not-found':
+      return 'Email/Username atau kata sandi tidak sesuai, atau akun login Firebase belum di-provision oleh Admin.';
+    case 'auth/invalid-email':
+      return 'Format alamat email tidak valid.';
+    case 'auth/user-disabled':
+      return 'Akun ini dinonaktifkan pada Firebase Authentication.';
+    case 'auth/too-many-requests':
+      return 'Terlalu banyak percobaan login gagal. Silakan tunggu beberapa menit sebelum mencoba lagi.';
+    case 'auth/email-already-in-use':
+      return 'Email sudah terdaftar di Firebase Authentication.';
+    case 'auth/weak-password':
+      return 'Kata sandi terlalu lemah (minimal 6 karakter).';
+    case 'auth/requires-recent-login':
+      return 'Demi keamanan, silakan keluar dan masuk ulang dengan Google terlebih dahulu sebelum mereset kata sandi.';
+    case 'auth/unauthorized-domain': {
+      const host = typeof window !== 'undefined' ? window.location.hostname : 'domain ini';
+      return `Domain "${host}" belum diizinkan pada Firebase Authentication. Tambahkan "${host}" di Firebase Console → Authentication → Settings → Authorized domains.`;
+    }
+    default:
+      return error instanceof Error ? error.message : 'Terjadi kesalahan autentikasi Firebase.';
+  }
+}
+
+export const linkOrUpdateCurrentUserPassword = async (
+  newPassword: string
+): Promise<'linked' | 'updated'> => {
+  const user = auth.currentUser;
+  if (!user || !user.email) {
+    throw new Error('Silakan masuk terlebih dahulu sebelum mereset kata sandi.');
+  }
+
+  const hasPasswordProvider = user.providerData.some(
+    (p) => p.providerId === EmailAuthProvider.PROVIDER_ID
+  );
+
+  if (hasPasswordProvider) {
+    await updatePassword(user, newPassword);
+    return 'updated';
+  }
+
+  const credential = EmailAuthProvider.credential(user.email, newPassword);
+  await linkWithCredential(user, credential);
+  return 'linked';
 };
 
 export const signOutFirebase = async (): Promise<void> => {

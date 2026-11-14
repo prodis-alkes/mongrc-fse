@@ -142,6 +142,27 @@
       },
       "required": ["email", "userId", "role", "status"]
     },
+    "UidRoleEntry": {
+      "title": "UidRoleEntry",
+      "description": "Firebase Auth UID-keyed RBAC lookup entry provisioned by Admin so Email/Password logins have immutable UID-bound roles.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "userId": { "type": "string" },
+        "role": {
+          "type": "string",
+          "enum": ["Admin", "Auditor", "Satker PIC"]
+        },
+        "status": {
+          "type": "string",
+          "enum": ["active", "inactive"]
+        },
+        "assignedSatker": { "type": "string" },
+        "assignedSatkerNo": { "type": "integer" }
+      },
+      "required": ["uid", "email", "userId", "role", "status"]
+    },
     "AdminGrant": {
       "title": "AdminGrant",
       "description": "Registry of UIDs granted Admin privileges.",
@@ -252,6 +273,10 @@
     "/userRoles/{emailKey}": {
       "schema": { "$ref": "#/entities/UserRoleEntry" },
       "description": "Email-keyed RBAC lookup table managed by Admin."
+    },
+    "/uidRoles/{uid}": {
+      "schema": { "$ref": "#/entities/UidRoleEntry" },
+      "description": "Firebase Auth UID-keyed RBAC lookup table provisioned by Admin."
     },
     "/admins/{uid}": {
       "schema": { "$ref": "#/entities/AdminGrant" },

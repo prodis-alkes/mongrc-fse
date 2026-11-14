@@ -15,6 +15,7 @@ import {
   BarChart3,
   MessageSquare,
   History,
+  KeyRound,
 } from 'lucide-react';
 
 export const DatabaseConfigModal: React.FC = () => {
@@ -34,6 +35,7 @@ export const DatabaseConfigModal: React.FC = () => {
     connectDatabaseWithGoogle,
     disconnectDatabase,
     syncLocalStateToDatabase,
+    resetAdminCredentialsToDefault,
     satkers,
     users,
     auditLogs,
@@ -45,6 +47,7 @@ export const DatabaseConfigModal: React.FC = () => {
   const [evaluationPeriod, setEvaluationPeriod] = useState(appConfig.evaluationPeriod);
   const [editLocked, setEditLocked] = useState(appConfig.spreadsheetEditLocked);
   const [savedNotice, setSavedNotice] = useState(false);
+  const [adminResetNotice, setAdminResetNotice] = useState<{ ok: boolean; text: string } | null>(null);
 
   const isAdmin = currentUser?.role === 'Admin';
 
@@ -84,7 +87,7 @@ export const DatabaseConfigModal: React.FC = () => {
                 Database Firestore & Konfigurasi Sistem
               </h3>
               <p className="text-xs text-slate-500 dark:text-slate-400">
-                Pembacaan data GRC aktif otomatis untuk semua pengunjung · Login Google khusus Admin/Editor
+                Pembacaan data GRC aktif otomatis untuk semua pengunjung · Login Google (Admin) atau Email/Password (PIC Satker)
               </p>
             </div>
           </div>
@@ -159,15 +162,38 @@ export const DatabaseConfigModal: React.FC = () => {
                 ) : (
                   <>
                     {isAdmin && (
-                      <button
-                        type="button"
-                        onClick={() => void syncLocalStateToDatabase()}
-                        disabled={isSyncingDb}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-900 dark:bg-blue-700 hover:bg-blue-800 dark:hover:bg-blue-600 text-white font-semibold transition-colors disabled:opacity-50 cursor-pointer"
-                      >
-                        <RefreshCw className={`w-3.5 h-3.5 ${isSyncingDb ? 'animate-spin' : ''}`} />
-                        <span>Sinkronkan Ulang</span>
-                      </button>
+                      <>
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            setAdminResetNotice(null);
+                            const res = await resetAdminCredentialsToDefault();
+                            if (res.success) {
+                              setAdminResetNotice({
+                                ok: true,
+                                text: `Username admin.p2 & kata sandi Admin!123 berhasil ${res.mode === 'linked' ? 'ditautkan' : 'direset'} pada Firebase Auth & Firestore.`,
+                              });
+                            } else if (res.error) {
+                              setAdminResetNotice({ ok: false, text: res.error });
+                            }
+                          }}
+                          disabled={isSyncingDb}
+                          title="Reset username ke admin.p2 dan password Firebase Auth ke Admin!123"
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/60 text-blue-900 dark:text-blue-200 hover:bg-blue-100 dark:hover:bg-blue-900/60 font-semibold transition-colors disabled:opacity-50 cursor-pointer"
+                        >
+                          <KeyRound className="w-3.5 h-3.5" />
+                          <span>Reset admin.p2</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void syncLocalStateToDatabase()}
+                          disabled={isSyncingDb}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-900 dark:bg-blue-700 hover:bg-blue-800 dark:hover:bg-blue-600 text-white font-semibold transition-colors disabled:opacity-50 cursor-pointer"
+                        >
+                          <RefreshCw className={`w-3.5 h-3.5 ${isSyncingDb ? 'animate-spin' : ''}`} />
+                          <span>Sinkronkan Ulang</span>
+                        </button>
+                      </>
                     )}
                     <button
                       type="button"
@@ -181,6 +207,25 @@ export const DatabaseConfigModal: React.FC = () => {
                 )}
               </div>
             </div>
+
+            {adminResetNotice && (
+              <div
+                className={`p-3 rounded-lg border flex items-start justify-between gap-2 ${
+                  adminResetNotice.ok
+                    ? 'bg-emerald-50 dark:bg-emerald-950/60 border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-200'
+                    : 'bg-amber-50 dark:bg-amber-950/60 border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-200'
+                }`}
+              >
+                <span>{adminResetNotice.text}</span>
+                <button
+                  type="button"
+                  onClick={() => setAdminResetNotice(null)}
+                  className="hover:underline shrink-0 cursor-pointer"
+                >
+                  Tutup
+                </button>
+              </div>
+            )}
 
             {dbSyncError && (
               <div className="p-3 rounded-lg bg-rose-50 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-800 text-rose-800 dark:text-rose-200 flex items-start justify-between gap-2">
