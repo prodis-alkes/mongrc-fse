@@ -265,7 +265,7 @@ export const SatkerDetailDrawer: React.FC = () => {
                   onChange={e => setNewCommentText(e.target.value)}
                   placeholder={
                     !currentUser || currentUser.role === 'Viewer'
-                      ? 'Mode Baca Publik: Masuk sebagai Admin/Editor melalui menu Database untuk mengirim catatan.'
+                      ? 'Mode Baca Publik: Masuk terlebih dahulu sebagai Admin/Auditor/PIC untuk mengirim catatan.'
                       : 'Tuliskan temuan audit, permintaan evidensi, atau tanggapan perbaikan...'
                   }
                   className="w-full text-xs p-2.5 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 rounded-md focus:outline-hidden focus:ring-1 focus:ring-blue-600 disabled:opacity-60"

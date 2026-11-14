@@ -18,9 +18,10 @@ function MainApp() {
     isAuthenticated,
     dbSyncError,
     clearDbSyncError,
+    isLoginModalOpen,
+    setIsLoginModalOpen,
   } = useGRC();
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
-  const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
 
   if (isLoginModalOpen) {
     return (

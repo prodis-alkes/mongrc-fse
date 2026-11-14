@@ -31,8 +31,7 @@ export const Header: React.FC<HeaderProps> = ({ onOpenImportModal, onOpenLoginMo
     setActiveTab, 
     theme,
     toggleTheme,
-    isFirestoreLive,
-    isDbConnected,
+    isSheetsLive,
     isSyncingDb,
     setIsDatabaseModalOpen
   } = useGRC();
@@ -190,25 +189,23 @@ export const Header: React.FC<HeaderProps> = ({ onOpenImportModal, onOpenLoginMo
               <button
                 onClick={() => setIsDatabaseModalOpen(true)}
                 title={
-                  isDbConnected
-                    ? 'Admin/Editor Terautentikasi (Baca & Tulis Firestore)'
-                    : isFirestoreLive
-                    ? 'Terhubung ke Database Firestore (Mode Baca Publik) — Klik untuk Login Admin'
-                    : 'Status & Konfigurasi Database Firestore'
+                  isSheetsLive
+                    ? 'Terhubung ke Google Spreadsheet (Apps Script) — Klik untuk konfigurasi & sinkronisasi'
+                    : 'Status & Konfigurasi Google Spreadsheet (Apps Script)'
                 }
                 className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-md border transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
-                  isDbConnected || isFirestoreLive
+                  isSheetsLive
                     ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800 hover:bg-emerald-100 dark:hover:bg-emerald-900/60'
                     : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border-slate-300 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700'
                 }`}
               >
-                <Database className={`w-3.5 h-3.5 ${isDbConnected || isFirestoreLive ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-600 dark:text-slate-300'}`} />
-                <span className="hidden xl:inline">{isDbConnected ? 'Admin DB' : 'Live DB'}</span>
+                <Database className={`w-3.5 h-3.5 ${isSheetsLive ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-600 dark:text-slate-300'}`} />
+                <span className="hidden xl:inline">{isSheetsLive ? 'Live Sheet' : 'Sheet'}</span>
                 <span
                   className={`w-2 h-2 rounded-full ${
                     isSyncingDb
                       ? 'bg-amber-500 animate-pulse'
-                      : isDbConnected || isFirestoreLive
+                      : isSheetsLive
                       ? 'bg-emerald-500'
                       : 'bg-slate-300 dark:bg-slate-600'
                   }`}
@@ -298,11 +295,11 @@ export const Header: React.FC<HeaderProps> = ({ onOpenImportModal, onOpenLoginMo
                       >
                         <span className="flex items-center gap-2">
                           <Database className="w-4 h-4 text-emerald-700 dark:text-emerald-400" />
-                          <span>Database Firestore & Config</span>
+                          <span>Google Spreadsheet & Config</span>
                         </span>
                         <span
                           className={`w-2 h-2 rounded-full ${
-                            isDbConnected ? 'bg-emerald-500' : 'bg-slate-300 dark:bg-slate-600'
+                            isSheetsLive ? 'bg-emerald-500' : 'bg-slate-300 dark:bg-slate-600'
                           }`}
                         />
                       </button>
@@ -354,7 +351,7 @@ export const Header: React.FC<HeaderProps> = ({ onOpenImportModal, onOpenLoginMo
             ) : (
               <button
                 onClick={() => (onOpenLoginModal ? onOpenLoginModal() : setIsDatabaseModalOpen(true))}
-                title="Masuk dengan Username/Email Satker atau Google Admin"
+                title="Masuk dengan Username atau Email Satker / Admin"
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-blue-900 hover:bg-blue-800 dark:bg-blue-700 dark:hover:bg-blue-600 rounded-lg shadow-xs transition-colors cursor-pointer whitespace-nowrap"
               >
                 <LogIn className="w-3.5 h-3.5" />

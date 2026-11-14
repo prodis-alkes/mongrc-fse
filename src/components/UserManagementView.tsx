@@ -1,7 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { useGRC } from '../context/GRCContext';
 import { DEFAULT_USER_PASSWORD } from '../data/satkerUsers';
-import { FIREBASE_PROJECT_ID } from '../services/firebase';
 import { UserProfile, UserRole } from '../types/mongrc';
 import { 
   Users, 
@@ -19,8 +18,7 @@ import {
   AlertTriangle,
   UserCheck,
   RefreshCw,
-  KeyRound,
-  ExternalLink
+  KeyRound
 } from 'lucide-react';
 
 export const UserManagementView: React.FC = () => {
@@ -34,8 +32,7 @@ export const UserManagementView: React.FC = () => {
     toggleUserStatus,
     provisionAllSatkerAccounts,
     isProvisioningUsers,
-    isDbConnected,
-    setIsDatabaseModalOpen,
+    setIsLoginModalOpen,
   } = useGRC();
 
   const [provisionStatus, setProvisionStatus] = useState<{
@@ -44,7 +41,6 @@ export const UserManagementView: React.FC = () => {
       created: number;
       linked: number;
       failed: number;
-      authProviderDisabled: boolean;
       errors: string[];
     };
   } | null>(null);
@@ -210,7 +206,7 @@ export const UserManagementView: React.FC = () => {
 
   const isAdmin = currentUser?.role === 'Admin';
 
-  if (!isAdmin || !isDbConnected) {
+  if (!isAdmin) {
     return (
       <div className="space-y-6">
         <div className="pb-2 border-b border-slate-200 dark:border-slate-800">
@@ -231,12 +227,12 @@ export const UserManagementView: React.FC = () => {
               Akses Terbatas Khusus Administrator
             </h2>
             <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-              Demi perlindungan data pribadi (NIP &amp; Email dinas), daftar akun pengguna hanya dapat dilihat dan dikelola setelah Administrator melakukan autentikasi Google melalui panel Database.
+              Demi perlindungan data pribadi (NIP &amp; Email dinas), daftar akun pengguna hanya dapat dilihat dan dikelola oleh Administrator yang sudah masuk ke sistem.
             </p>
           </div>
           <button
             type="button"
-            onClick={() => setIsDatabaseModalOpen(true)}
+            onClick={() => setIsLoginModalOpen(true)}
             className="inline-flex items-center gap-2 px-4 py-2 text-xs font-semibold text-white bg-blue-900 dark:bg-blue-700 hover:bg-blue-800 dark:hover:bg-blue-600 rounded-lg transition-colors cursor-pointer"
           >
             <ShieldCheck className="w-4 h-4" />
@@ -281,7 +277,7 @@ export const UserManagementView: React.FC = () => {
                 <KeyRound className="w-4 h-4" />
               )}
               <span>
-                {isProvisioningUsers ? 'Memproses 57 Akun...' : 'Provision 57 Login Satker'}
+                {isProvisioningUsers ? 'Memproses 57 Akun...' : 'Sinkronkan 57 Akun Satker'}
               </span>
             </button>
 
@@ -296,7 +292,7 @@ export const UserManagementView: React.FC = () => {
         )}
       </div>
 
-      {/* Inline action error or incomplete Firestore directory notice */}
+      {/* Inline action error or incomplete directory notice */}
       {actionError && (
         <div className="p-3 bg-rose-50 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-800 text-rose-800 dark:text-rose-200 rounded-xl text-xs flex items-center justify-between gap-2">
           <div className="flex items-center gap-2">
@@ -317,10 +313,10 @@ export const UserManagementView: React.FC = () => {
         <div className="p-3.5 bg-blue-50/70 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800/80 rounded-xl text-xs text-blue-900 dark:text-blue-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="space-y-0.5">
             <div className="font-bold">
-              Direktori Firestore baru memuat {users.length} akun
+              Direktori baru memuat {users.length} akun
             </div>
             <p className="text-[11px] text-blue-800/90 dark:text-blue-300/90">
-              Akun yang dibuat langsung di Firebase Console Auth tidak tampil otomatis sebelum profilnya disimpan ke Firestore. Klik <strong>Provision 57 Login Satker</strong> untuk mendaftarkan/menautkan seluruh 57 akun Satker ke Firebase Auth &amp; Firestore, atau gunakan <strong>Tambah Pengguna Baru</strong>.
+              Klik <strong>Sinkronkan 57 Akun Satker</strong> untuk memastikan seluruh 57 akun Satker tersedia dengan kredensial default, atau gunakan <strong>Tambah Pengguna Baru</strong>.
             </p>
           </div>
         </div>
@@ -339,13 +335,13 @@ export const UserManagementView: React.FC = () => {
             <div className="space-y-2">
               <div className="flex items-center justify-between gap-2">
                 <div className="font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
-                  {provisionStatus.result.authProviderDisabled || provisionStatus.result.failed > 0 ? (
+                  {provisionStatus.result.failed > 0 ? (
                     <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
                   ) : (
                     <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
                   )}
                   <span>
-                    Hasil Provisioning 57 Akun Login Satker (Default Password: <code className="font-mono">{DEFAULT_USER_PASSWORD}</code>)
+                    Hasil Sinkronisasi 57 Akun Login Satker (Default Password: <code className="font-mono">{DEFAULT_USER_PASSWORD}</code>)
                   </span>
                 </div>
                 <button
@@ -357,28 +353,9 @@ export const UserManagementView: React.FC = () => {
                 </button>
               </div>
               <div className="text-slate-600 dark:text-slate-300">
-                Akun Auth baru dibuat: <strong>{provisionStatus.result.created}</strong> &middot; Akun Auth terhubung: <strong>{provisionStatus.result.linked}</strong> &middot; Gagal: <strong>{provisionStatus.result.failed}</strong>
+                Akun baru ditambahkan: <strong>{provisionStatus.result.created}</strong> &middot; Akun diperbarui: <strong>{provisionStatus.result.linked}</strong> &middot; Gagal: <strong>{provisionStatus.result.failed}</strong>
               </div>
-              {provisionStatus.result.authProviderDisabled && (
-                <div className="p-3 rounded-lg bg-amber-50 dark:bg-amber-950/50 border border-amber-200 dark:border-amber-800 text-amber-900 dark:text-amber-200 space-y-1.5">
-                  <div className="font-semibold">
-                    Provider Email/Password belum aktif di Firebase Authentication.
-                  </div>
-                  <p className="text-[11px] leading-relaxed">
-                    Seluruh 57 profil &amp; role Satker telah disinkronkan ke Firestore, namun akun login Email/Password baru dapat dibuat setelah Anda mengaktifkan metode login <strong>Email/Password</strong> di Firebase Console (Authentication &rarr; Sign-in method &rarr; Email/Password &rarr; Enable), lalu klik kembali tombol <strong>Provision 57 Login Satker</strong>.
-                  </p>
-                  <a
-                    href={`https://console.firebase.google.com/project/${FIREBASE_PROJECT_ID}/authentication/providers`}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="inline-flex items-center gap-1 font-semibold text-blue-800 dark:text-blue-300 hover:underline"
-                  >
-                    <span>Buka Firebase Console Sign-in Providers</span>
-                    <ExternalLink className="w-3.5 h-3.5" />
-                  </a>
-                </div>
-              )}
-              {!provisionStatus.result.authProviderDisabled && provisionStatus.result.errors.length > 0 && (
+              {provisionStatus.result.errors.length > 0 && (
                 <div className="text-[11px] text-rose-700 dark:text-rose-300 max-h-24 overflow-y-auto">
                   {provisionStatus.result.errors.slice(0, 5).map((err, idx) => (
                     <div key={idx}>• {err}</div>
@@ -853,7 +830,7 @@ export const UserManagementView: React.FC = () => {
                   {editingUserId
                     ? 'Simpan Perubahan'
                     : isSavingUser
-                    ? 'Menyimpan ke Auth & Firestore...'
+                    ? 'Menyimpan Pengguna...'
                     : 'Daftarkan Pengguna'}
                 </button>
               </div>
