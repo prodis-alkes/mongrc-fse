@@ -6,8 +6,6 @@ import {
   X,
   CheckCircle2,
   AlertTriangle,
-  RefreshCw,
-  UploadCloud,
   Lock,
   Unlock,
   Settings,
@@ -15,7 +13,6 @@ import {
   BarChart3,
   MessageSquare,
   History,
-  KeyRound,
   Link2,
   Copy,
   Check,
@@ -38,12 +35,6 @@ export const DatabaseConfigModal: React.FC = () => {
     appsScriptUrl,
     updateAppsScriptUrl,
     resetAppsScriptUrlToDefault,
-    refreshFromSpreadsheet,
-    syncLocalStateToDatabase,
-    syncAllUsersToSpreadsheet,
-    isSyncingUsers,
-    resetAdminCredentialsToDefault,
-    setIsLoginModalOpen,
     satkers,
     users,
     auditLogs,
@@ -171,107 +162,6 @@ export const DatabaseConfigModal: React.FC = () => {
                 </div>
               </div>
 
-              <div className="flex flex-wrap items-center gap-2">
-                <button
-                  type="button"
-                  onClick={async () => {
-                    setActionNotice(null);
-                    const ok = await refreshFromSpreadsheet();
-                    if (ok) {
-                      setActionNotice({
-                        ok: true,
-                        text: 'Data terbaru berhasil diambil dari Google Spreadsheet.',
-                      });
-                    }
-                  }}
-                  disabled={isSyncingDb}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-700 dark:bg-emerald-700 hover:bg-emerald-600 dark:hover:bg-emerald-600 text-white font-semibold transition-colors disabled:opacity-50 cursor-pointer"
-                >
-                  <RefreshCw className={`w-3.5 h-3.5 ${isSyncingDb ? 'animate-spin' : ''}`} />
-                  <span>Ambil Data Spreadsheet</span>
-                </button>
-
-                {isAdmin ? (
-                  <>
-                    <button
-                      type="button"
-                      onClick={async () => {
-                        setActionNotice(null);
-                        const res = await syncLocalStateToDatabase();
-                        if (res.success) {
-                          setActionNotice({
-                            ok: true,
-                            text: 'Seluruh data Satker berhasil dikirim ke Google Spreadsheet.',
-                          });
-                        }
-                      }}
-                      disabled={isSyncingDb}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-900 dark:bg-blue-700 hover:bg-blue-800 dark:hover:bg-blue-600 text-white font-semibold transition-colors disabled:opacity-50 cursor-pointer"
-                    >
-                      <UploadCloud className="w-3.5 h-3.5" />
-                      <span>Kirim Semua ke Sheet</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={async () => {
-                        setActionNotice(null);
-                        const res = await syncAllUsersToSpreadsheet();
-                        if (res.success) {
-                          setActionNotice({
-                            ok: true,
-                            text: `${res.count} akun pengguna berhasil dikirim ke tab Users Google Spreadsheet.`,
-                          });
-                        } else if (res.error) {
-                          setActionNotice({ ok: false, text: res.error });
-                        }
-                      }}
-                      disabled={isSyncingDb || isSyncingUsers}
-                      title="Kirim seluruh akun pengguna dari aplikasi ke tab Users Google Spreadsheet"
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-700 hover:bg-indigo-600 text-white font-semibold transition-colors disabled:opacity-50 cursor-pointer"
-                    >
-                      <Users className="w-3.5 h-3.5" />
-                      <span>Kirim Users ke Sheet</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={async () => {
-                        setActionNotice(null);
-                        const res = await resetAdminCredentialsToDefault();
-                        if (res.success) {
-                          setActionNotice({
-                            ok: true,
-                            text: 'Kredensial default admin.p2 berhasil direset.',
-                          });
-                        } else if (res.error) {
-                          setActionNotice({ ok: false, text: res.error });
-                        }
-                      }}
-                      disabled={isSyncingDb}
-                      title="Reset kredensial default admin.p2"
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/60 text-blue-900 dark:text-blue-200 hover:bg-blue-100 dark:hover:bg-blue-900/60 font-semibold transition-colors disabled:opacity-50 cursor-pointer"
-                    >
-                      <KeyRound className="w-3.5 h-3.5" />
-                      <span>Reset admin.p2</span>
-                    </button>
-                  </>
-                ) : (
-                  !isAuthenticated && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setIsDatabaseModalOpen(false);
-                        setIsLoginModalOpen(true);
-                      }}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-900 dark:bg-blue-700 hover:bg-blue-800 dark:hover:bg-blue-600 text-white font-semibold transition-colors cursor-pointer"
-                    >
-                      <KeyRound className="w-3.5 h-3.5" />
-                      <span>Masuk Akun</span>
-                    </button>
-                  )
-                )}
-              </div>
             </div>
 
             {actionNotice && (
