@@ -26,29 +26,39 @@ export const AuditAndCollaborationView: React.FC = () => {
   const [activeSubTab, setActiveSubTab] = useState<'audit' | 'comments'>('audit');
   const [selectedStatusFilter, setSelectedStatusFilter] = useState<'all' | 'open' | 'in_review' | 'resolved'>('all');
 
+  // O(1) lookup map for satkers
+  const satkerByNo = useMemo(() => {
+    return new Map(satkers.map((s) => [s.no, s]));
+  }, [satkers]);
+
   // Filtered audit logs
   const filteredAuditLogs = useMemo(() => {
-    return auditLogs.filter(log => {
-      const matchSearch = log.satkerName.toLowerCase().includes(searchFilter.toLowerCase()) ||
-                          log.authorName.toLowerCase().includes(searchFilter.toLowerCase()) ||
-                          log.indicatorLabel.toLowerCase().includes(searchFilter.toLowerCase()) ||
-                          log.reason.toLowerCase().includes(searchFilter.toLowerCase());
-      return matchSearch;
-    });
+    const q = searchFilter.trim().toLowerCase();
+    if (!q) return auditLogs;
+    return auditLogs.filter((log) =>
+      log.satkerName.toLowerCase().includes(q) ||
+      log.authorName.toLowerCase().includes(q) ||
+      log.indicatorLabel.toLowerCase().includes(q) ||
+      log.reason.toLowerCase().includes(q)
+    );
   }, [auditLogs, searchFilter]);
 
   // Filtered comments
   const filteredComments = useMemo(() => {
-    return comments.filter(c => {
-      const satker = satkers.find(s => s.no === c.satkerNo);
-      const satkerName = satker ? satker.satker : '';
-      const matchSearch = satkerName.toLowerCase().includes(searchFilter.toLowerCase()) ||
-                          c.authorName.toLowerCase().includes(searchFilter.toLowerCase()) ||
-                          c.content.toLowerCase().includes(searchFilter.toLowerCase());
-      const matchStatus = selectedStatusFilter === 'all' || c.status === selectedStatusFilter;
-      return matchSearch && matchStatus;
+    const q = searchFilter.trim().toLowerCase();
+    return comments.filter((c) => {
+      if (selectedStatusFilter !== 'all' && c.status !== selectedStatusFilter) {
+        return false;
+      }
+      if (!q) return true;
+      const satkerName = satkerByNo.get(c.satkerNo)?.satker || '';
+      return (
+        satkerName.toLowerCase().includes(q) ||
+        c.authorName.toLowerCase().includes(q) ||
+        c.content.toLowerCase().includes(q)
+      );
     });
-  }, [comments, satkers, searchFilter, selectedStatusFilter]);
+  }, [comments, satkerByNo, searchFilter, selectedStatusFilter]);
 
   return (
     <div className="space-y-6">

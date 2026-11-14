@@ -1,6 +1,14 @@
 import { INDICATOR_METAS } from '../data/baselineData';
 import { IndicatorMeta, SatkerData, SummaryThresholdResult } from '../types/mongrc';
 
+export const NORMALIZED_INDICATOR_METAS: IndicatorMeta[] = INDICATOR_METAS.filter(
+  (m) => m.pKey !== null
+);
+
+export const INDICATOR_META_BY_KEY: ReadonlyMap<string, IndicatorMeta> = new Map(
+  INDICATOR_METAS.map((m) => [m.key, m])
+);
+
 export function getDimensionMaxScore(meta: Pick<IndicatorMeta, 'scale'>): number {
   return meta.scale === '5-scale' ? 5 : 100;
 }
@@ -9,7 +17,7 @@ export function calculateNormalizedPercentage(
   meta: Pick<IndicatorMeta, 'scale'>,
   rawValue: number | null | undefined
 ): number {
-  if (rawValue === null || rawValue === undefined || isNaN(rawValue)) return 0;
+  if (rawValue === null || rawValue === undefined || Number.isNaN(rawValue)) return 0;
   const maxScore = getDimensionMaxScore(meta);
   return round2((rawValue / maxScore) * 100);
 }
@@ -33,35 +41,22 @@ export function recalculateSatkerScores(satker: Partial<SatkerData>): SatkerData
   const pekppp = satker.pekppp ?? null;
 
   // Normalizations: (rawScore / dimensionMaxScore) * 100
-  const pSki = calculateNormalizedPercentage({ scale: '100-scale' }, ski);
-  const pSpip = calculateNormalizedPercentage({ scale: '5-scale' }, spip);
-  const pMri = calculateNormalizedPercentage({ scale: '5-scale' }, mri);
-  const pIepk = calculateNormalizedPercentage({ scale: '5-scale' }, iepk);
-  const pWbkRb = calculateNormalizedPercentage({ scale: '100-scale' }, wbkRb);
-  const pSakip = calculateNormalizedPercentage({ scale: '100-scale' }, sakip);
-  const pNka = calculateNormalizedPercentage({ scale: '100-scale' }, nka);
-  const pIkpa = calculateNormalizedPercentage({ scale: '100-scale' }, ikpa);
-  const pIpAsn = calculateNormalizedPercentage({ scale: '100-scale' }, ipAsn);
-  const pArsip = calculateNormalizedPercentage({ scale: '100-scale' }, arsip);
-  const pPekppp = calculateNormalizedPercentage({ scale: '5-scale' }, pekppp);
+  const pSki = round2(ski);
+  const pSpip = round2((spip / 5) * 100);
+  const pMri = round2((mri / 5) * 100);
+  const pIepk = round2((iepk / 5) * 100);
+  const pWbkRb = round2(wbkRb);
+  const pSakip = round2(sakip);
+  const pNka = round2(nka);
+  const pIkpa = round2(ikpa);
+  const pIpAsn = round2(ipAsn);
+  const pArsip = round2(arsip);
+  const pPekppp = pekppp !== null ? round2((pekppp / 5) * 100) : 0;
 
   // Composite average over the 11 normalized dimensions (matches Kemenkes MonGRC formula)
-  const pValues = [
-    pSki,
-    pSpip,
-    pMri,
-    pIepk,
-    pWbkRb,
-    pSakip,
-    pNka,
-    pIkpa,
-    pIpAsn,
-    pArsip,
-    pPekppp,
-  ];
-
-  const sum = pValues.reduce((acc, val) => acc + val, 0);
-  const average = round2(sum / 11);
+  const average = round2(
+    (pSki + pSpip + pMri + pIepk + pWbkRb + pSakip + pNka + pIkpa + pIpAsn + pArsip + pPekppp) / 11
+  );
 
   return {
     no: satker.no ?? 1,
@@ -103,7 +98,7 @@ export function round2(num: number): number {
 }
 
 export function formatNumber(val: number | null | undefined, decimals = 2): string {
-  if (val === null || val === undefined || isNaN(val)) return '-';
+  if (val === null || val === undefined || Number.isNaN(val)) return '-';
   return val.toLocaleString('id-ID', {
     minimumFractionDigits: decimals,
     maximumFractionDigits: decimals,
@@ -119,7 +114,7 @@ export function isIndicatorTercapai(indicator: IndicatorMeta, value: number | nu
 }
 
 /**
- * Calculate dynamic summary statistics (TERCAPAI, TIDAK TERCAPAI, Average) across all active satkers.
+ * Single-pass calculation of dynamic summary statistics (TERCAPAI, TIDAK TERCAPAI, Averages) across all active satkers.
  */
 export function calculateSummaryStats(satkers: SatkerData[]) {
   const count = satkers.length;
@@ -132,67 +127,64 @@ export function calculateSummaryStats(satkers: SatkerData[]) {
     };
   }
 
-  // Calculate averages per raw metric
-  const rawAverages: Record<string, number> = {};
-  const pAverages: Record<string, number> = {};
+  const metricCount = INDICATOR_METAS.length;
+  const rawSums = new Float64Array(metricCount);
+  const validCounts = new Uint32Array(metricCount);
+  const pSums = new Float64Array(metricCount);
+  const tercapaiCounts = new Uint32Array(metricCount);
+  const tidakTercapaiCounts = new Uint32Array(metricCount);
+  let totalAvgSum = 0;
 
-  for (const meta of INDICATOR_METAS) {
-    let validCount = 0;
-    let sum = 0;
-    satkers.forEach(s => {
+  for (let sIdx = 0; sIdx < count; sIdx++) {
+    const s = satkers[sIdx];
+    totalAvgSum += s.average;
+
+    for (let mIdx = 0; mIdx < metricCount; mIdx++) {
+      const meta = INDICATOR_METAS[mIdx];
       const v = s[meta.key];
-      if (typeof v === 'number' && !isNaN(v)) {
-        sum += v;
-        validCount++;
+      if (typeof v === 'number' && !Number.isNaN(v)) {
+        rawSums[mIdx] += v;
+        validCounts[mIdx] += 1;
+        if (v >= meta.threshold) {
+          tercapaiCounts[mIdx] += 1;
+        } else {
+          tidakTercapaiCounts[mIdx] += 1;
+        }
+        if (meta.pKey) {
+          pSums[mIdx] += calculateNormalizedPercentage(meta, v);
+        }
       }
-    });
-    rawAverages[meta.key] = validCount > 0 ? round2(sum / validCount) : 0;
-
-    if (meta.pKey) {
-      let pSum = 0;
-      satkers.forEach(s => {
-        const rawVal = s[meta.key] as number | null | undefined;
-        pSum += calculateNormalizedPercentage(meta, rawVal);
-      });
-      pAverages[meta.pKey] = round2(pSum / count);
     }
   }
 
-  // Overall national average
-  const totalAvgSum = satkers.reduce((acc, s) => acc + s.average, 0);
-  const nationalAverage = round2(totalAvgSum / count);
+  const rawAverages: Record<string, number> = {};
+  const pAverages: Record<string, number> = {};
+  const tercapaiSummary: SummaryThresholdResult[] = new Array(metricCount);
 
-  // Dynamic TERCAPAI / TIDAK TERCAPAI calculation
-  const tercapaiSummary: SummaryThresholdResult[] = INDICATOR_METAS.map(meta => {
-    let tercapai = 0;
-    let tidakTercapai = 0;
-    let evaluated = 0;
+  for (let mIdx = 0; mIdx < metricCount; mIdx++) {
+    const meta = INDICATOR_METAS[mIdx];
+    const valid = validCounts[mIdx];
+    const tercapai = tercapaiCounts[mIdx];
+    const tidakTercapai = tidakTercapaiCounts[mIdx];
 
-    satkers.forEach(s => {
-      const v = s[meta.key];
-      if (v !== null && v !== undefined && !isNaN(v)) {
-        evaluated++;
-        if (isIndicatorTercapai(meta, v)) {
-          tercapai++;
-        } else {
-          tidakTercapai++;
-        }
-      }
-    });
+    rawAverages[meta.key] = valid > 0 ? round2(rawSums[mIdx] / valid) : 0;
+    if (meta.pKey) {
+      pAverages[meta.pKey] = round2(pSums[mIdx] / count);
+    }
 
-    return {
+    tercapaiSummary[mIdx] = {
       indicatorKey: meta.key,
       label: meta.label,
       threshold: meta.threshold,
       tercapaiCount: tercapai,
       tidakTercapaiCount: tidakTercapai,
-      totalEvaluated: evaluated,
-      achievementRate: evaluated > 0 ? round2((tercapai / evaluated) * 100) : 0,
+      totalEvaluated: valid,
+      achievementRate: valid > 0 ? round2((tercapai / valid) * 100) : 0,
     };
-  });
+  }
 
   return {
-    nationalAverage,
+    nationalAverage: round2(totalAvgSum / count),
     tercapaiSummary,
     rawAverages,
     pAverages,

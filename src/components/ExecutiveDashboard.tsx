@@ -36,15 +36,20 @@ export const ExecutiveDashboard: React.FC = () => {
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   const [searchFilter, setSearchFilter] = useState('');
 
+  const satkerByNo = useMemo(
+    () => new Map(satkers.map((s) => [s.no, s])),
+    [satkers]
+  );
+
   // Primary and Compare Satker objects
   const primarySatker = useMemo(() => {
-    return satkers.find(s => s.no === radarPrimaryId) || satkers[0];
-  }, [satkers, radarPrimaryId]);
+    return satkerByNo.get(radarPrimaryId) || satkers[0];
+  }, [satkerByNo, satkers, radarPrimaryId]);
 
   const compareSatker = useMemo(() => {
     if (!radarCompareId) return null;
-    return satkers.find(s => s.no === radarCompareId) || null;
-  }, [satkers, radarCompareId]);
+    return satkerByNo.get(radarCompareId) || null;
+  }, [satkerByNo, radarCompareId]);
 
   // Ranked satkers
   const sortedSatkers = useMemo(() => {
@@ -56,13 +61,17 @@ export const ExecutiveDashboard: React.FC = () => {
 
   // Filtered leaderboard
   const displayedSatkers = useMemo(() => {
+    const q = searchFilter.trim().toLowerCase();
     return satkers
-      .filter(s => {
-        const matchesCategory = selectedCategory === 'ALL' || 
-                                s.category === selectedCategory ||
-                                (selectedCategory === 'Pusat' && (s.category === 'Pusat' || s.category === 'Direktorat'));
-        const matchesSearch = s.satker.toLowerCase().includes(searchFilter.toLowerCase()) ||
-                              s.unitKerja.toLowerCase().includes(searchFilter.toLowerCase());
+      .filter((s) => {
+        const matchesCategory =
+          selectedCategory === 'ALL' ||
+          s.category === selectedCategory ||
+          (selectedCategory === 'Pusat' && (s.category === 'Pusat' || s.category === 'Direktorat'));
+        const matchesSearch =
+          !q ||
+          s.satker.toLowerCase().includes(q) ||
+          s.unitKerja.toLowerCase().includes(q);
         return matchesCategory && matchesSearch;
       })
       .sort((a, b) => {
@@ -75,9 +84,19 @@ export const ExecutiveDashboard: React.FC = () => {
   }, [satkers, selectedCategory, searchFilter, sortField, sortOrder]);
 
   // Calculate overall target achievement rate across all metrics
-  const totalEvaluations = summaryStats.tercapaiSummary.reduce((sum, item) => sum + item.totalEvaluated, 0);
-  const totalTercapai = summaryStats.tercapaiSummary.reduce((sum, item) => sum + item.tercapaiCount, 0);
-  const overallTercapaiRate = totalEvaluations > 0 ? (totalTercapai / totalEvaluations) * 100 : 0;
+  const { totalEvaluations, totalTercapai, overallTercapaiRate } = useMemo(() => {
+    let evalSum = 0;
+    let passSum = 0;
+    for (const item of summaryStats.tercapaiSummary) {
+      evalSum += item.totalEvaluated;
+      passSum += item.tercapaiCount;
+    }
+    return {
+      totalEvaluations: evalSum,
+      totalTercapai: passSum,
+      overallTercapaiRate: evalSum > 0 ? (passSum / evalSum) * 100 : 0,
+    };
+  }, [summaryStats.tercapaiSummary]);
 
   // Indicators needing highest intervention (lowest achievement rate)
   const vulnerableIndicators = useMemo(() => {

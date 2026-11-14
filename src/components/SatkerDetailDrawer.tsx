@@ -108,14 +108,19 @@ export const SatkerDetailDrawer: React.FC = () => {
     return recalculateSatkerScores(draft);
   }, [satker, isEditingScores, draftInputs]);
 
+  const rank = useMemo(() => {
+    if (!satker) return 0;
+    let higherCount = 0;
+    for (let i = 0; i < satkers.length; i++) {
+      if (satkers[i].average > satker.average) higherCount++;
+    }
+    return higherCount + 1;
+  }, [satkers, satker]);
+
   if (!satker || !previewSatker) return null;
 
   const canModifyThisSatker = canEditSatker(satker);
   const isLocked = appConfig.spreadsheetEditLocked;
-
-  // National rank calculation
-  const sorted = [...satkers].sort((a, b) => b.average - a.average);
-  const rank = sorted.findIndex((s) => s.no === satker.no) + 1;
 
   const startEditingScores = () => {
     const initialDraft = {} as Record<RawScoreKey, string>;

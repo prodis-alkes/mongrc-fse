@@ -2,6 +2,8 @@ import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { useGRC } from '../context/GRCContext';
 import { INDICATOR_METAS } from '../data/baselineData';
 import {
+  INDICATOR_META_BY_KEY,
+  NORMALIZED_INDICATOR_METAS,
   calculateNormalizedPercentage,
   formatNumber,
   getDimensionMaxScore,
@@ -77,12 +79,16 @@ export const SpreadsheetGrid: React.FC = () => {
   }, [editingCell]);
 
   const filteredSatkers = useMemo(() => {
-    return satkers.filter(s => {
-      const matchCat = selectedCategory === 'ALL' || 
-                       s.category === selectedCategory ||
-                       (selectedCategory === 'Pusat' && (s.category === 'Pusat' || s.category === 'Direktorat'));
-      const matchSearch = s.satker.toLowerCase().includes(searchFilter.toLowerCase()) ||
-                          s.unitKerja.toLowerCase().includes(searchFilter.toLowerCase());
+    const q = searchFilter.trim().toLowerCase();
+    return satkers.filter((s) => {
+      const matchCat =
+        selectedCategory === 'ALL' ||
+        s.category === selectedCategory ||
+        (selectedCategory === 'Pusat' && (s.category === 'Pusat' || s.category === 'Direktorat'));
+      const matchSearch =
+        !q ||
+        s.satker.toLowerCase().includes(q) ||
+        s.unitKerja.toLowerCase().includes(q);
       return matchCat && matchSearch;
     });
   }, [satkers, selectedCategory, searchFilter]);
@@ -120,7 +126,7 @@ export const SpreadsheetGrid: React.FC = () => {
   const handleSaveEdit = () => {
     if (!editingCell) return;
 
-    const meta = INDICATOR_METAS.find((m) => m.key === editingCell.fieldKey);
+    const meta = INDICATOR_META_BY_KEY.get(String(editingCell.fieldKey));
     let parsedVal: number | null = null;
     if (editInputVal.trim() !== '') {
       const cleaned = editInputVal.replace(',', '.').trim();
@@ -398,7 +404,7 @@ export const SpreadsheetGrid: React.FC = () => {
 
                 {/* Normalized P-Columns (Always Read-Only, computed from max dimension score) */}
                 {(columnViewMode === 'all' || columnViewMode === 'normalized') && (
-                  INDICATOR_METAS.filter(m => m.pKey !== null).map(m => {
+                  NORMALIZED_INDICATOR_METAS.map(m => {
                     const maxScore = getDimensionMaxScore(m);
                     return (
                       <th
@@ -530,7 +536,7 @@ export const SpreadsheetGrid: React.FC = () => {
 
                     {/* Normalized P-Columns Cells (Always Read-Only, calculated from raw / maxScore * 100) */}
                     {(columnViewMode === 'all' || columnViewMode === 'normalized') && (
-                      INDICATOR_METAS.filter(m => m.pKey !== null).map(meta => {
+                      NORMALIZED_INDICATOR_METAS.map(meta => {
                         const rawVal = s[meta.key] as number | null;
                         const maxScore = getDimensionMaxScore(meta);
                         const pVal = calculateNormalizedPercentage(meta, rawVal);
@@ -607,7 +613,7 @@ export const SpreadsheetGrid: React.FC = () => {
                 )}
 
                 {(columnViewMode === 'all' || columnViewMode === 'normalized') && (
-                  INDICATOR_METAS.filter(m => m.pKey !== null).map(m => (
+                  NORMALIZED_INDICATOR_METAS.map(m => (
                     <td key={`foot-p-avg-${m.pKey}`} className="py-2.5 px-2 font-mono font-bold text-emerald-950 dark:text-emerald-300 bg-emerald-50/50 dark:bg-emerald-950/40">
                       {formatNumber(summaryStats.pAverages[m.pKey!])}
                     </td>

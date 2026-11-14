@@ -1,4 +1,10 @@
-import { AppConfiguration, SatkerCategory, SatkerData } from '../types/mongrc';
+import {
+  AppConfiguration,
+  SatkerCategory,
+  SatkerData,
+  UserProfile,
+  UserRole,
+} from '../types/mongrc';
 import { recalculateSatkerScores } from '../utils/grcCalculations';
 
 export const DEFAULT_APPS_SCRIPT_URL =
@@ -47,6 +53,23 @@ export interface SatkerRow extends Record<string, unknown> {
   AVERAGE: number;
   'Terakhir Diubah Oleh': string;
   'Waktu Update': string;
+}
+
+export interface UserAccount extends Record<string, unknown> {
+  ID: string;
+  Username: string;
+  Email: string;
+  NIP: string;
+  'Nama Lengkap': string;
+  'Peran (Role)': UserRole;
+  Instansi: string;
+  'Satker Ditugaskan': string;
+  'No Satker': number | '';
+  Inisial: string;
+  Status: 'active' | 'inactive';
+  Password?: string;
+  'Login Terakhir': string;
+  'Dibuat Pada'?: string;
 }
 
 export function getStoredAppsScriptUrl(): string {
@@ -98,6 +121,22 @@ function normalizeCategory(raw: unknown): SatkerCategory {
   if (text === 'Loka') return 'Loka';
   if (text === 'Pusat' || text === 'Direktorat') return 'Pusat';
   return 'Balai Kelas I';
+}
+
+function normalizeUserRole(raw: unknown): UserRole {
+  const text = String(raw || '').trim().toLowerCase();
+  if (text === 'admin') return 'Admin';
+  if (text === 'auditor') return 'Auditor';
+  if (text === 'viewer') return 'Viewer';
+  return 'Satker PIC';
+}
+
+function normalizeUserStatus(raw: unknown): 'active' | 'inactive' {
+  const text = String(raw || '').trim().toLowerCase();
+  if (text === 'inactive' || text === 'nonaktif' || text === 'disabled') {
+    return 'inactive';
+  }
+  return 'active';
 }
 
 export function mapSheetRowToSatker(raw: Record<string, unknown>): SatkerData | null {
@@ -190,6 +229,89 @@ export function serializeSatkerToSheetRow(satker: SatkerData): SatkerRow {
   };
 }
 
+export function mapSheetRowToUser(
+  raw: Record<string, unknown>
+): { user: UserProfile; password?: string } | null {
+  const username = String(raw['Username'] ?? raw['username'] ?? '').trim();
+  const email = String(raw['Email'] ?? raw['email'] ?? '').trim().toLowerCase();
+  const id = String(raw['ID'] ?? raw['id'] ?? '').trim();
+
+  // Guard against legacy code.gs returning Data sheet rows when ?sheet=Users is ignored
+  if (!username && !email) {
+    return null;
+  }
+
+  const name = String(raw['Nama Lengkap'] ?? raw['name'] ?? (username || email)).trim();
+  const role = normalizeUserRole(raw['Peran (Role)'] ?? raw['role']);
+  const assignedSatkerRaw = String(
+    raw['Satker Ditugaskan'] ?? raw['assignedSatker'] ?? ''
+  ).trim();
+  const assignedSatkerNoRaw = parseOptionalNumber(
+    raw['No Satker'] ?? raw['assignedSatkerNo']
+  );
+
+  const initialsRaw = String(raw['Inisial'] ?? raw['avatarInitials'] ?? '').trim();
+  const avatarInitials =
+    initialsRaw ||
+    name
+      .split(/\s+/)
+      .filter((w) => w && !w.includes('.') && !w.includes(','))
+      .slice(0, 2)
+      .map((w) => w[0]?.toUpperCase())
+      .join('') ||
+    'US';
+
+  const lastLoginRaw = String(raw['Login Terakhir'] ?? raw['lastLogin'] ?? '').trim();
+  const createdAtRaw = String(raw['Dibuat Pada'] ?? raw['createdAt'] ?? '').trim();
+  const passwordRaw = String(raw['Password'] ?? raw['password'] ?? '').trim();
+
+  const user: UserProfile = {
+    id: id || `user-${username || email}`,
+    username: username || email.split('@')[0],
+    email,
+    nip: String(raw['NIP'] ?? raw['nip'] ?? '-').trim() || '-',
+    name,
+    role,
+    agency: String(raw['Instansi'] ?? raw['agency'] ?? 'Ditjen P2 Kemenkes RI').trim(),
+    assignedSatker: assignedSatkerRaw || undefined,
+    assignedSatkerNo:
+      assignedSatkerNoRaw !== null && assignedSatkerNoRaw > 0
+        ? Math.trunc(assignedSatkerNoRaw)
+        : undefined,
+    avatarInitials,
+    status: normalizeUserStatus(raw['Status'] ?? raw['status']),
+    lastLogin: lastLoginRaw || undefined,
+    createdAt: createdAtRaw || new Date().toLocaleString('id-ID'),
+  };
+
+  return {
+    user,
+    password: passwordRaw || undefined,
+  };
+}
+
+export function serializeUserToSheetAccount(
+  user: UserProfile,
+  password?: string
+): UserAccount {
+  return {
+    ID: user.id,
+    Username: user.username,
+    Email: user.email.trim().toLowerCase(),
+    NIP: user.nip,
+    'Nama Lengkap': user.name,
+    'Peran (Role)': user.role,
+    Instansi: user.agency,
+    'Satker Ditugaskan': user.assignedSatker || '',
+    'No Satker': user.assignedSatkerNo ?? '',
+    Inisial: user.avatarInitials,
+    Status: user.status,
+    ...(password ? { Password: password } : {}),
+    'Login Terakhir': user.lastLogin || '',
+    'Dibuat Pada': user.createdAt || '',
+  };
+}
+
 export async function fetchSatkersFromAppsScript(
   url: string,
   signal?: AbortSignal
@@ -244,9 +366,80 @@ export async function fetchSatkersFromAppsScript(
   return mapped;
 }
 
+export interface FetchUsersResult {
+  users: UserProfile[];
+  passwords: Record<string, string>;
+  usersSheetSupported: boolean;
+}
+
+export async function fetchUsersFromAppsScript(
+  url: string,
+  signal?: AbortSignal
+): Promise<FetchUsersResult> {
+  const targetUrl = (url || DEFAULT_APPS_SCRIPT_URL).trim();
+  const separator = targetUrl.includes('?') ? '&' : '?';
+  const response = await fetch(`${targetUrl}${separator}sheet=Users`, {
+    method: 'GET',
+    cache: 'no-store',
+    signal,
+  });
+
+  if (!response.ok) {
+    throw new Error(`Gagal memuat tab Users dari Google Spreadsheet (HTTP ${response.status}).`);
+  }
+
+  const json = (await response.json()) as {
+    status?: string;
+    data?: unknown[];
+    message?: string;
+  };
+
+  if (json.status !== 'success' || !Array.isArray(json.data)) {
+    throw new Error(json.message || 'Respons tab Users Google Apps Script tidak valid.');
+  }
+
+  const rawItems = json.data.filter(
+    (item): item is Record<string, unknown> => Boolean(item && typeof item === 'object')
+  );
+
+  // Detect if Apps Script ignored ?sheet=Users and returned Data sheet Satker rows
+  const looksLikeDataSheet =
+    rawItems.length > 0 &&
+    !('Username' in rawItems[0]) &&
+    !('Email' in rawItems[0]) &&
+    ('SATKER' in rawItems[0] || 'SKI' in rawItems[0]);
+
+  if (looksLikeDataSheet) {
+    return {
+      users: [],
+      passwords: {},
+      usersSheetSupported: false,
+    };
+  }
+
+  const users: UserProfile[] = [];
+  const passwords: Record<string, string> = {};
+
+  for (const row of rawItems) {
+    const mapped = mapSheetRowToUser(row);
+    if (!mapped) continue;
+    users.push(mapped.user);
+    if (mapped.password && mapped.user.email) {
+      passwords[mapped.user.email.trim().toLowerCase()] = mapped.password;
+    }
+  }
+
+  return {
+    users,
+    passwords,
+    usersSheetSupported: true,
+  };
+}
+
 export interface AppsScriptWriteResult {
   ok: boolean;
   doPostMissing?: boolean;
+  unsupportedAction?: boolean;
   message?: string;
 }
 
@@ -289,10 +482,11 @@ async function postToAppsScript(
     try {
       const result = JSON.parse(text) as { status?: string; message?: string; error?: string };
       if (result.status !== 'success') {
+        const msg = result.message || result.error || 'Google Apps Script menolak pembaruan data.';
         return {
           ok: false,
-          message:
-            result.message || result.error || 'Google Apps Script menolak pembaruan data.',
+          unsupportedAction: msg.toLowerCase().includes('unknown action'),
+          message: msg,
         };
       }
       return { ok: true };
@@ -397,41 +591,238 @@ export async function pushBulkSatkersToAppsScript(
   });
 }
 
-export const APPS_SCRIPT_DO_POST_TEMPLATE = `function doPost(e) {
-  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheets()[0];
-  var payload = JSON.parse(e.postData.contents);
-  var headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+// ============================================================================
+// USERS SHEET DIRECT OPERATIONS (tab "Users" via ?sheet=Users & POST actions)
+// ============================================================================
 
-  function rowObjToValues(obj) {
-    return headers.map(function(h) {
-      return obj.hasOwnProperty(h) ? obj[h] : '';
+export async function handleUpdateUserInAppsScript(
+  url: string,
+  editedUser: UserAccount
+): Promise<AppsScriptWriteResult> {
+  return postToAppsScript(url, {
+    sheet: 'Users',
+    action: 'updateUser',
+    id: editedUser.ID,
+    user: editedUser,
+  });
+}
+
+export async function handleCreateUserInAppsScript(
+  url: string,
+  newUser: Partial<UserAccount>
+): Promise<AppsScriptWriteResult> {
+  return postToAppsScript(url, {
+    sheet: 'Users',
+    action: 'createUser',
+    user: newUser,
+  });
+}
+
+export async function handleDeleteUserInAppsScript(
+  url: string,
+  userId: string
+): Promise<AppsScriptWriteResult> {
+  return postToAppsScript(url, {
+    sheet: 'Users',
+    action: 'deleteUser',
+    id: userId,
+  });
+}
+
+export async function recordUserLoginInAppsScript(
+  url: string,
+  userId: string
+): Promise<void> {
+  try {
+    await postToAppsScript(url, {
+      sheet: 'Users',
+      action: 'updateLogin',
+      id: userId,
     });
+  } catch {
+    // Non-blocking audit update
   }
+}
 
-  if (payload.action === 'bulkUpdate' && Array.isArray(payload.data)) {
-    var rows = payload.data.map(rowObjToValues);
-    if (rows.length > 0) {
-      sheet.getRange(2, 1, rows.length, headers.length).setValues(rows);
+export async function syncUsersToAppsScript(
+  url: string,
+  usersList: UserAccount[]
+): Promise<AppsScriptWriteResult> {
+  return postToAppsScript(url, {
+    sheet: 'Users',
+    action: 'syncUsers',
+    users: usersList,
+  });
+}
+
+export const APPS_SCRIPT_DO_POST_TEMPLATE = `const DATA_SHEET_NAME = 'Data';
+const USERS_SHEET_NAME = 'Users';
+const USER_HEADERS = [
+  'ID', 'Username', 'Email', 'NIP', 'Nama Lengkap', 'Peran (Role)',
+  'Instansi', 'Satker Ditugaskan', 'No Satker', 'Inisial',
+  'Status', 'Password', 'Login Terakhir', 'Dibuat Pada'
+];
+
+function ensureUsersSheet(ss) {
+  let sheet = ss.getSheetByName(USERS_SHEET_NAME);
+  if (!sheet) {
+    sheet = ss.insertSheet(USERS_SHEET_NAME);
+  }
+  if (sheet.getLastRow() === 0) {
+    sheet.getRange(1, 1, 1, USER_HEADERS.length).setValues([USER_HEADERS]);
+    sheet.setFrozenRows(1);
+  }
+  return sheet;
+}
+
+function doGet(e) {
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const targetSheetName = (e && e.parameter && e.parameter.sheet) ? e.parameter.sheet : DATA_SHEET_NAME;
+    const sheet = targetSheetName === USERS_SHEET_NAME
+      ? ss.getSheetByName(USERS_SHEET_NAME)
+      : (ss.getSheetByName(targetSheetName) || ss.getSheets()[0]);
+
+    if (!sheet) {
+      return jsonResponse({ status: 'success', data: [] });
     }
-    return ContentService.createTextOutput(JSON.stringify({ status: 'success', updated: rows.length }))
-      .setMimeType(ContentService.MimeType.JSON);
-  }
-
-  var rowObj = payload.row || payload.data;
-  if (payload.action === 'update' && rowObj) {
-    var targetNo = Number(payload.no || rowObj['No']);
-    var noColIdx = headers.indexOf('No');
-    var lastRow = sheet.getLastRow();
-    var allNos = sheet.getRange(2, noColIdx + 1, Math.max(1, lastRow - 1), 1).getValues();
-    for (var i = 0; i < allNos.length; i++) {
-      if (Number(allNos[i][0]) === targetNo) {
-        sheet.getRange(i + 2, 1, 1, headers.length).setValues([rowObjToValues(rowObj)]);
-        return ContentService.createTextOutput(JSON.stringify({ status: 'success', no: targetNo }))
-          .setMimeType(ContentService.MimeType.JSON);
+    const values = sheet.getDataRange().getValues();
+    if (values.length < 2) {
+      return jsonResponse({ status: 'success', data: [] });
+    }
+    const headers = values[0];
+    const rows = [];
+    for (let i = 1; i < values.length; i++) {
+      const rowObj = {};
+      for (let j = 0; j < headers.length; j++) {
+        rowObj[headers[j]] = values[i][j];
       }
+      rows.push(rowObj);
     }
+    return jsonResponse({ status: 'success', data: rows });
+  } catch (err) {
+    return jsonResponse({ status: 'error', message: err.toString() });
   }
+}
 
-  return ContentService.createTextOutput(JSON.stringify({ status: 'error', message: 'Row not found' }))
-    .setMimeType(ContentService.MimeType.JSON);
+function doPost(e) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(15000);
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const payload = JSON.parse(e.postData.contents);
+    const action = payload.action || 'update';
+    const sheetName = payload.sheet || DATA_SHEET_NAME;
+    const sheet = sheetName === USERS_SHEET_NAME
+      ? ensureUsersSheet(ss)
+      : (ss.getSheetByName(sheetName) || ss.getSheets()[0]);
+
+    const values = sheet.getDataRange().getValues();
+    const headers = values[0];
+
+    const mapObjectToRow = (obj, existingRow) => {
+      return headers.map((header, colIdx) => {
+        if (Object.prototype.hasOwnProperty.call(obj, header)) return obj[header];
+        return existingRow ? existingRow[colIdx] : '';
+      });
+    };
+
+    if (action === 'update') {
+      const record = payload.row || payload.data || payload;
+      const targetNo = Number(payload.no || record.No);
+      const noColIdx = headers.indexOf('No');
+      for (let i = 1; i < values.length; i++) {
+        if (Number(values[i][noColIdx]) === targetNo) {
+          sheet.getRange(i + 1, 1, 1, headers.length).setValues([mapObjectToRow(record, values[i])]);
+          return jsonResponse({ status: 'success', updatedRow: i + 1 });
+        }
+      }
+      return jsonResponse({ status: 'error', message: 'Satker tidak ditemukan' });
+    }
+
+    if (action === 'bulkUpdate') {
+      const records = payload.data || payload.rows || [];
+      const noColIdx = headers.indexOf('No');
+      records.forEach((record) => {
+        const targetNo = Number(record.No);
+        for (let i = 1; i < values.length; i++) {
+          if (Number(values[i][noColIdx]) === targetNo) {
+            values[i] = mapObjectToRow(record, values[i]);
+            break;
+          }
+        }
+      });
+      sheet.getRange(1, 1, values.length, headers.length).setValues(values);
+      return jsonResponse({ status: 'success', message: 'Bulk update completed' });
+    }
+
+    // USERS TAB OPERATIONS
+    const idColIdx = headers.indexOf('ID');
+
+    if (action === 'updateUser') {
+      const targetId = String(payload.id || (payload.user && payload.user.ID) || '').trim();
+      for (let i = 1; i < values.length; i++) {
+        if (String(values[i][idColIdx]).trim() === targetId) {
+          sheet.getRange(i + 1, 1, 1, headers.length).setValues([mapObjectToRow(payload.user, values[i])]);
+          return jsonResponse({ status: 'success', updatedRow: i + 1 });
+        }
+      }
+      return jsonResponse({ status: 'error', message: 'User tidak ditemukan: ' + targetId });
+    }
+
+    if (action === 'createUser') {
+      sheet.appendRow(mapObjectToRow(payload.user, null));
+      return jsonResponse({ status: 'success', message: 'User ditambahkan' });
+    }
+
+    if (action === 'deleteUser') {
+      const targetId = String(payload.id || '').trim();
+      for (let i = 1; i < values.length; i++) {
+        if (String(values[i][idColIdx]).trim() === targetId) {
+          sheet.deleteRow(i + 1);
+          return jsonResponse({ status: 'success', deletedRow: i + 1 });
+        }
+      }
+      return jsonResponse({ status: 'error', message: 'User tidak ditemukan: ' + targetId });
+    }
+
+    if (action === 'updateLogin') {
+      const targetId = String(payload.id || '').trim();
+      const loginColIdx = headers.indexOf('Login Terakhir');
+      for (let i = 1; i < values.length; i++) {
+        if (String(values[i][idColIdx]).trim() === targetId && loginColIdx !== -1) {
+          sheet.getRange(i + 1, loginColIdx + 1).setValue(new Date().toLocaleString('id-ID'));
+          return jsonResponse({ status: 'success' });
+        }
+      }
+      return jsonResponse({ status: 'success' });
+    }
+
+    if (action === 'syncUsers' && Array.isArray(payload.users)) {
+      const existingMap = {};
+      for (let i = 1; i < values.length; i++) {
+        existingMap[String(values[i][idColIdx]).trim()] = i;
+      }
+      payload.users.forEach((u) => {
+        const idx = existingMap[String(u.ID).trim()];
+        if (idx !== undefined) {
+          values[idx] = mapObjectToRow(u, values[idx]);
+        } else {
+          values.push(mapObjectToRow(u, null));
+        }
+      });
+      sheet.getRange(1, 1, values.length, headers.length).setValues(values);
+      return jsonResponse({ status: 'success', total: payload.users.length });
+    }
+
+    return jsonResponse({ status: 'error', message: 'Unknown action: ' + action });
+  } catch (err) {
+    return jsonResponse({ status: 'error', message: err.toString() });
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function jsonResponse(obj) {
+  return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON);
 }`;

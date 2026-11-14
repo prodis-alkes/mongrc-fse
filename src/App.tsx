@@ -1,16 +1,43 @@
-import React, { useState } from 'react';
+import React, { Suspense, lazy, useState } from 'react';
 import { GRCProvider, useGRC } from './context/GRCContext';
 import { Header } from './components/Header';
 import { ExecutiveDashboard } from './components/ExecutiveDashboard';
-import { HeatmapMatrix } from './components/HeatmapMatrix';
-import { SpreadsheetGrid } from './components/SpreadsheetGrid';
-import { AuditAndCollaborationView } from './components/AuditAndCollaborationView';
-import { UserManagementView } from './components/UserManagementView';
-import { SatkerDetailDrawer } from './components/SatkerDetailDrawer';
-import { CSVImportModal } from './components/CSVImportModal';
-import { LoginPage } from './components/LoginPage';
-import { DatabaseConfigModal } from './components/DatabaseConfigModal';
 import { AlertTriangle, X } from 'lucide-react';
+
+const HeatmapMatrix = lazy(() =>
+  import('./components/HeatmapMatrix').then((m) => ({ default: m.HeatmapMatrix }))
+);
+const SpreadsheetGrid = lazy(() =>
+  import('./components/SpreadsheetGrid').then((m) => ({ default: m.SpreadsheetGrid }))
+);
+const AuditAndCollaborationView = lazy(() =>
+  import('./components/AuditAndCollaborationView').then((m) => ({
+    default: m.AuditAndCollaborationView,
+  }))
+);
+const UserManagementView = lazy(() =>
+  import('./components/UserManagementView').then((m) => ({ default: m.UserManagementView }))
+);
+const SatkerDetailDrawer = lazy(() =>
+  import('./components/SatkerDetailDrawer').then((m) => ({ default: m.SatkerDetailDrawer }))
+);
+const CSVImportModal = lazy(() =>
+  import('./components/CSVImportModal').then((m) => ({ default: m.CSVImportModal }))
+);
+const LoginPage = lazy(() =>
+  import('./components/LoginPage').then((m) => ({ default: m.LoginPage }))
+);
+const DatabaseConfigModal = lazy(() =>
+  import('./components/DatabaseConfigModal').then((m) => ({ default: m.DatabaseConfigModal }))
+);
+
+function ViewFallback() {
+  return (
+    <div className="py-16 text-center text-xs text-slate-500 dark:text-slate-400">
+      Memuat tampilan...
+    </div>
+  );
+}
 
 function MainApp() {
   const {
@@ -25,10 +52,12 @@ function MainApp() {
 
   if (isLoginModalOpen) {
     return (
-      <LoginPage
-        onSuccess={() => setIsLoginModalOpen(false)}
-        onExploreAsGuest={() => setIsLoginModalOpen(false)}
-      />
+      <Suspense fallback={<ViewFallback />}>
+        <LoginPage
+          onSuccess={() => setIsLoginModalOpen(false)}
+          onExploreAsGuest={() => setIsLoginModalOpen(false)}
+        />
+      </Suspense>
     );
   }
 
@@ -61,20 +90,24 @@ function MainApp() {
           </div>
         )}
 
-        {activeTab === 'executive' && <ExecutiveDashboard />}
-        {activeTab === 'heatmap' && <HeatmapMatrix />}
-        {activeTab === 'spreadsheet' && <SpreadsheetGrid />}
-        {activeTab === 'audit' && <AuditAndCollaborationView />}
-        {activeTab === 'users' && <UserManagementView />}
+        <Suspense fallback={<ViewFallback />}>
+          {activeTab === 'executive' && <ExecutiveDashboard />}
+          {activeTab === 'heatmap' && <HeatmapMatrix />}
+          {activeTab === 'spreadsheet' && <SpreadsheetGrid />}
+          {activeTab === 'audit' && <AuditAndCollaborationView />}
+          {activeTab === 'users' && <UserManagementView />}
+        </Suspense>
       </main>
 
       {/* Interactive Flyout Drawers and Modals */}
-      <SatkerDetailDrawer />
-      <CSVImportModal
-        isOpen={isImportModalOpen}
-        onClose={() => setIsImportModalOpen(false)}
-      />
-      <DatabaseConfigModal />
+      <Suspense fallback={null}>
+        <SatkerDetailDrawer />
+        <CSVImportModal
+          isOpen={isImportModalOpen}
+          onClose={() => setIsImportModalOpen(false)}
+        />
+        <DatabaseConfigModal />
+      </Suspense>
 
       {/* Clean, Quiet Footer */}
       <footer className="bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 mt-12 py-6 text-xs text-slate-500 dark:text-slate-400 transition-colors duration-150">

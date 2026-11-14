@@ -40,6 +40,8 @@ export const DatabaseConfigModal: React.FC = () => {
     resetAppsScriptUrlToDefault,
     refreshFromSpreadsheet,
     syncLocalStateToDatabase,
+    syncAllUsersToSpreadsheet,
+    isSyncingUsers,
     resetAdminCredentialsToDefault,
     setIsLoginModalOpen,
     satkers,
@@ -208,6 +210,28 @@ export const DatabaseConfigModal: React.FC = () => {
                     >
                       <UploadCloud className="w-3.5 h-3.5" />
                       <span>Kirim Semua ke Sheet</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        setActionNotice(null);
+                        const res = await syncAllUsersToSpreadsheet();
+                        if (res.success) {
+                          setActionNotice({
+                            ok: true,
+                            text: `${res.count} akun pengguna berhasil dikirim ke tab Users Google Spreadsheet.`,
+                          });
+                        } else if (res.error) {
+                          setActionNotice({ ok: false, text: res.error });
+                        }
+                      }}
+                      disabled={isSyncingDb || isSyncingUsers}
+                      title="Kirim seluruh akun pengguna dari aplikasi ke tab Users Google Spreadsheet"
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-700 hover:bg-indigo-600 text-white font-semibold transition-colors disabled:opacity-50 cursor-pointer"
+                    >
+                      <Users className="w-3.5 h-3.5" />
+                      <span>Kirim Users ke Sheet</span>
                     </button>
 
                     <button

@@ -18,8 +18,11 @@ import {
   AlertTriangle,
   UserCheck,
   RefreshCw,
-  KeyRound
+  KeyRound,
+  UploadCloud
 } from 'lucide-react';
+
+import { APPS_SCRIPT_DO_POST_TEMPLATE } from '../services/googleSheetsService';
 
 export const UserManagementView: React.FC = () => {
   const { 
@@ -32,8 +35,17 @@ export const UserManagementView: React.FC = () => {
     toggleUserStatus,
     provisionAllSatkerAccounts,
     isProvisioningUsers,
+    isUsersSheetLive,
+    usersSheetUnsupported,
+    isSyncingUsers,
+    refreshUsersFromSpreadsheet,
+    syncAllUsersToSpreadsheet,
     setIsLoginModalOpen,
   } = useGRC();
+
+  const [showCodeTemplate, setShowCodeTemplate] = useState(false);
+  const [copiedCode, setCopiedCode] = useState(false);
+  const [syncNotice, setSyncNotice] = useState<{ ok: boolean; text: string } | null>(null);
 
   const [provisionStatus, setProvisionStatus] = useState<{
     progress?: string;
@@ -70,15 +82,17 @@ export const UserManagementView: React.FC = () => {
   // Delete confirm modal state
   const [deletingUser, setDeletingUser] = useState<UserProfile | null>(null);
 
-  // Filtered users
+  // Filtered users (pre-lowercased query)
   const filteredUsers = useMemo(() => {
-    return users.filter(u => {
-      const matchSearch = 
-        u.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        u.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        u.username.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        u.nip.includes(searchQuery) ||
-        (u.assignedSatker && u.assignedSatker.toLowerCase().includes(searchQuery.toLowerCase()));
+    const q = searchQuery.trim().toLowerCase();
+    return users.filter((u) => {
+      const matchSearch =
+        !q ||
+        u.name.toLowerCase().includes(q) ||
+        u.email.toLowerCase().includes(q) ||
+        u.username.toLowerCase().includes(q) ||
+        u.nip.toLowerCase().includes(q) ||
+        Boolean(u.assignedSatker && u.assignedSatker.toLowerCase().includes(q));
 
       const matchRole = roleFilter === 'ALL' || u.role === roleFilter;
       const matchStatus = statusFilter === 'ALL' || u.status === statusFilter;
@@ -87,11 +101,26 @@ export const UserManagementView: React.FC = () => {
     });
   }, [users, searchQuery, roleFilter, statusFilter]);
 
-  // Statistics
-  const adminCount = users.filter(u => u.role === 'Admin').length;
-  const auditorCount = users.filter(u => u.role === 'Auditor').length;
-  const picCount = users.filter(u => u.role === 'Satker PIC').length;
-  const activeCount = users.filter(u => u.status === 'active').length;
+  // Single-pass user statistics
+  const { adminCount, auditorCount, picCount, activeCount } = useMemo(() => {
+    let admin = 0;
+    let auditor = 0;
+    let pic = 0;
+    let active = 0;
+    for (let i = 0; i < users.length; i++) {
+      const u = users[i];
+      if (u.role === 'Admin') admin++;
+      else if (u.role === 'Auditor') auditor++;
+      else if (u.role === 'Satker PIC') pic++;
+      if (u.status === 'active') active++;
+    }
+    return {
+      adminCount: admin,
+      auditorCount: auditor,
+      picCount: pic,
+      activeCount: active,
+    };
+  }, [users]);
 
   const openAddModal = () => {
     setEditingUserId(null);
@@ -144,27 +173,32 @@ export const UserManagementView: React.FC = () => {
       .join('') || 'PG';
 
     if (editingUserId) {
-      // Update
-      const res = updateUser(editingUserId, {
-        name: formName.trim(),
-        username: formUsername.trim(),
-        nip: formNip.trim(),
-        email: formEmail.trim(),
-        role: formRole,
-        agency: formAgency.trim() || (formRole === 'Admin' ? 'Setditjen P2 Kemenkes RI' : 'Balai Karantina Kesehatan'),
-        assignedSatker: assignedSatkerName,
-        assignedSatkerNo: formRole === 'Satker PIC' ? formAssignedSatkerNo : undefined,
-        avatarInitials: initials,
-        status: formStatus,
-        password: formPassword.trim() || undefined,
-      });
+      // Direct update row on Users sheet (action: "updateUser")
+      setIsSavingUser(true);
+      try {
+        const res = await updateUser(editingUserId, {
+          name: formName.trim(),
+          username: formUsername.trim(),
+          nip: formNip.trim(),
+          email: formEmail.trim(),
+          role: formRole,
+          agency: formAgency.trim() || (formRole === 'Admin' ? 'Setditjen P2 Kemenkes RI' : 'Balai Karantina Kesehatan'),
+          assignedSatker: assignedSatkerName,
+          assignedSatkerNo: formRole === 'Satker PIC' ? formAssignedSatkerNo : undefined,
+          avatarInitials: initials,
+          status: formStatus,
+          password: formPassword.trim() || undefined,
+        });
 
-      if (!res.success) {
-        setFormError(res.error || 'Gagal memperbarui pengguna.');
-        return;
+        if (!res.success) {
+          setFormError(res.error || 'Gagal memperbarui pengguna.');
+          return;
+        }
+      } finally {
+        setIsSavingUser(false);
       }
     } else {
-      // Create
+      // Create new row on Users sheet (action: "createUser")
       setIsSavingUser(true);
       try {
         const res = await addUser({
@@ -194,10 +228,10 @@ export const UserManagementView: React.FC = () => {
     setIsModalOpen(false);
   };
 
-  const handleConfirmDelete = () => {
+  const handleConfirmDelete = async () => {
     if (!deletingUser) return;
     setActionError(null);
-    const res = deleteUser(deletingUser.id);
+    const res = await deleteUser(deletingUser.id);
     if (!res.success) {
       setActionError(res.error || 'Gagal menghapus pengguna.');
     }
@@ -261,6 +295,43 @@ export const UserManagementView: React.FC = () => {
           <div className="flex flex-wrap items-center gap-2 shrink-0">
             <button
               type="button"
+              disabled={isSyncingUsers}
+              onClick={async () => {
+                setSyncNotice(null);
+                const res = await syncAllUsersToSpreadsheet();
+                if (res.success) {
+                  setSyncNotice({
+                    ok: true,
+                    text: `${res.count} akun pengguna berhasil dikirim dari aplikasi ke tab Users Google Spreadsheet.`,
+                  });
+                } else if (res.error) {
+                  setSyncNotice({ ok: false, text: res.error });
+                }
+              }}
+              title="Kirim seluruh pengguna dari aplikasi ke tab Users Google Spreadsheet terlebih dahulu"
+              className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg bg-emerald-700 hover:bg-emerald-600 text-white transition-colors cursor-pointer disabled:opacity-60"
+            >
+              <UploadCloud className="w-3.5 h-3.5" />
+              <span>Kirim Users ke Sheet</span>
+            </button>
+
+            <button
+              type="button"
+              disabled={isSyncingUsers}
+              onClick={() => void refreshUsersFromSpreadsheet()}
+              title="Muat ulang daftar pengguna langsung dari tab Users Google Spreadsheet"
+              className={`inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg border transition-colors cursor-pointer disabled:opacity-60 ${
+                isUsersSheetLive
+                  ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800 hover:bg-emerald-100'
+                  : 'bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700 hover:bg-slate-100'
+              }`}
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isSyncingUsers ? 'animate-spin' : ''}`} />
+              <span>{isUsersSheetLive ? 'Tab Users Live' : 'Muat Tab Users'}</span>
+            </button>
+
+            <button
+              type="button"
               disabled={isProvisioningUsers}
               onClick={async () => {
                 setProvisionStatus({ progress: 'Memulai sinkronisasi 57 akun Satker...' });
@@ -291,6 +362,75 @@ export const UserManagementView: React.FC = () => {
           </div>
         )}
       </div>
+
+      {/* Sync status notification */}
+      {syncNotice && (
+        <div
+          className={`p-3 rounded-xl border text-xs flex items-center justify-between gap-2 ${
+            syncNotice.ok
+              ? 'bg-emerald-50 dark:bg-emerald-950/60 border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-200'
+              : 'bg-amber-50 dark:bg-amber-950/60 border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-200'
+          }`}
+        >
+          <span>{syncNotice.text}</span>
+          <button
+            type="button"
+            onClick={() => setSyncNotice(null)}
+            className="hover:underline shrink-0 cursor-pointer"
+          >
+            Tutup
+          </button>
+        </div>
+      )}
+
+      {/* Warning if Apps Script code.gs does not yet route ?sheet=Users */}
+      {usersSheetUnsupported && (
+        <div className="p-3.5 bg-amber-50 dark:bg-amber-950/50 border border-amber-200 dark:border-amber-800 rounded-xl text-xs text-amber-900 dark:text-amber-200 space-y-2">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-start gap-2">
+              <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+              <span>
+                Endpoint Google Apps Script saat ini belum menangani parameter <code>?sheet=Users</code> / aksi <code>updateUser</code> &amp; <code>createUser</code> (masih merujuk sheet <code>Data</code>). Perubahan pengguna sementara tersimpan di browser lokal hingga <code>code.gs</code> diperbarui.
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowCodeTemplate((prev) => !prev)}
+              className="text-[11px] font-semibold underline shrink-0 cursor-pointer"
+            >
+              {showCodeTemplate ? 'Sembunyikan code.gs' : 'Lihat kode code.gs (Data + Users)'}
+            </button>
+          </div>
+
+          {showCodeTemplate && (
+            <div className="p-3 rounded-lg bg-slate-900 text-slate-100 border border-slate-700 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-semibold text-emerald-300">
+                  Template code.gs lengkap (Data + Users)
+                </span>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    try {
+                      await navigator.clipboard.writeText(APPS_SCRIPT_DO_POST_TEMPLATE);
+                      setCopiedCode(true);
+                      setTimeout(() => setCopiedCode(false), 2000);
+                    } catch {
+                      // ignore
+                    }
+                  }}
+                  className="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-[11px] text-slate-200 cursor-pointer"
+                >
+                  {copiedCode ? 'Disalin!' : 'Salin code.gs'}
+                </button>
+              </div>
+              <pre className="text-[10px] font-mono overflow-x-auto max-h-52 leading-relaxed text-slate-300">
+                {APPS_SCRIPT_DO_POST_TEMPLATE}
+              </pre>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Inline action error or incomplete directory notice */}
       {actionError && (
@@ -574,7 +714,13 @@ export const UserManagementView: React.FC = () => {
                       <td className="py-3 px-4 text-center whitespace-nowrap">
                         <button
                           disabled={!isAdmin || isCurrent}
-                          onClick={() => toggleUserStatus(user.id)}
+                          onClick={async () => {
+                            setActionError(null);
+                            const res = await toggleUserStatus(user.id);
+                            if (!res.success && res.error) {
+                              setActionError(res.error);
+                            }
+                          }}
                           className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-semibold transition-colors ${
                             user.status === 'active'
                               ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/70 hover:bg-emerald-100 dark:hover:bg-emerald-900/60'
@@ -827,10 +973,10 @@ export const UserManagementView: React.FC = () => {
                   disabled={isSavingUser}
                   className="px-4 py-2 text-xs font-semibold text-white bg-blue-900 dark:bg-blue-700 rounded-lg hover:bg-blue-800 dark:hover:bg-blue-600 transition-colors shadow-xs disabled:opacity-60 cursor-pointer"
                 >
-                  {editingUserId
+                  {isSavingUser
+                    ? 'Menyimpan ke Spreadsheet...'
+                    : editingUserId
                     ? 'Simpan Perubahan'
-                    : isSavingUser
-                    ? 'Menyimpan Pengguna...'
                     : 'Daftarkan Pengguna'}
                 </button>
               </div>

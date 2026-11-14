@@ -20,10 +20,17 @@ import {
   DEFAULT_APP_CONFIG,
   DEFAULT_APPS_SCRIPT_URL,
   fetchSatkersFromAppsScript,
+  fetchUsersFromAppsScript,
   getStoredAppsScriptUrl,
+  handleCreateUserInAppsScript,
+  handleDeleteUserInAppsScript,
+  handleUpdateUserInAppsScript,
   pushBulkSatkersToAppsScript,
   pushSatkerUpdateToAppsScript,
+  recordUserLoginInAppsScript,
+  serializeUserToSheetAccount,
   setStoredAppsScriptUrl,
+  syncUsersToAppsScript,
 } from '../services/googleSheetsService';
 
 export const PUBLIC_VIEWER_USER: UserProfile = {
@@ -200,9 +207,12 @@ interface GRCContextType {
   addUser: (
     userData: Omit<UserProfile, 'id' | 'createdAt'> & { provisionAuthLogin?: boolean }
   ) => Promise<{ success: boolean; error?: string }>;
-  updateUser: (userId: string, updates: Partial<UserProfile>) => { success: boolean; error?: string };
-  deleteUser: (userId: string) => { success: boolean; error?: string };
-  toggleUserStatus: (userId: string) => void;
+  updateUser: (
+    userId: string,
+    updates: Partial<UserProfile>
+  ) => Promise<{ success: boolean; error?: string }>;
+  deleteUser: (userId: string) => Promise<{ success: boolean; error?: string }>;
+  toggleUserStatus: (userId: string) => Promise<{ success: boolean; error?: string }>;
   provisionAllSatkerAccounts: (
     onProgress?: (done: number, total: number, email: string) => void
   ) => Promise<{
@@ -213,6 +223,11 @@ interface GRCContextType {
   }>;
   resetAdminCredentialsToDefault: () => Promise<{ success: boolean; mode?: 'updated'; error?: string }>;
   isProvisioningUsers: boolean;
+  isUsersSheetLive: boolean;
+  usersSheetUnsupported: boolean;
+  isSyncingUsers: boolean;
+  refreshUsersFromSpreadsheet: () => Promise<boolean>;
+  syncAllUsersToSpreadsheet: () => Promise<{ success: boolean; count: number; error?: string }>;
   selectedSatkerNo: number | null;
   setSelectedSatkerNo: (no: number | null) => void;
   activeTab: NavigationTab;
@@ -331,7 +346,10 @@ export const GRCProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, []);
 
   const isAuthenticated = currentUser !== null && currentUser.role !== 'Viewer';
-  const users = currentUser?.role === 'Admin' ? directoryUsers : [];
+  const users = useMemo(
+    () => (currentUser?.role === 'Admin' ? directoryUsers : []),
+    [currentUser?.role, directoryUsers]
+  );
 
   const [activeTab, setActiveTab] = useState<NavigationTab>('executive');
   const [selectedSatkerNo, setSelectedSatkerNo] = useState<number | null>(null);
@@ -445,7 +463,12 @@ export const GRCProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const isDbConnected = isSheetsLive;
 
+  const [isUsersSheetLive, setIsUsersSheetLive] = useState(false);
+  const [usersSheetUnsupported, setUsersSheetUnsupported] = useState(false);
+  const [isSyncingUsers, setIsSyncingUsers] = useState(false);
+
   const fetchAbortRef = useRef<AbortController | null>(null);
+  const usersAbortRef = useRef<AbortController | null>(null);
   const activeSavesRef = useRef(0);
 
   const markSyncedNow = useCallback(() => {
@@ -458,6 +481,126 @@ export const GRCProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       })
     );
   }, []);
+
+  const directoryUsersRef = useRef(directoryUsers);
+  directoryUsersRef.current = directoryUsers;
+
+  const pushUsersFromAppToSheet = useCallback(
+    async (
+      urlToUse: string,
+      usersList: UserProfile[]
+    ): Promise<{ success: boolean; count: number; unsupported?: boolean; error?: string }> => {
+      const passwordMap = loadStoredPasswords();
+      const mergedMap = new Map<string, UserProfile>();
+      for (const u of INITIAL_USERS) mergedMap.set(u.email.trim().toLowerCase(), u);
+      for (const u of usersList) mergedMap.set(u.email.trim().toLowerCase(), u);
+      const allUsers = Array.from(mergedMap.values());
+
+      const accounts = allUsers.map((u) => {
+        const emailKey = u.email.trim().toLowerCase();
+        const pw =
+          passwordMap[emailKey] ||
+          (u.username.toLowerCase() === DEFAULT_ADMIN_USERNAME
+            ? DEFAULT_ADMIN_PASSWORD
+            : DEFAULT_USER_PASSWORD);
+        return serializeUserToSheetAccount(u, pw);
+      });
+
+      const remoteRes = await syncUsersToAppsScript(urlToUse, accounts);
+      if (!remoteRes.ok) {
+        if (remoteRes.unsupportedAction || remoteRes.doPostMissing) {
+          setUsersSheetUnsupported(true);
+          return {
+            success: false,
+            count: 0,
+            unsupported: true,
+            error:
+              'Google Apps Script belum mendukung aksi syncUsers pada tab Users.',
+          };
+        }
+        return {
+          success: false,
+          count: 0,
+          error: remoteRes.message || 'Gagal menyinkronkan pengguna ke Google Spreadsheet.',
+        };
+      }
+
+      setDirectoryUsers(allUsers);
+      setIsUsersSheetLive(true);
+      setUsersSheetUnsupported(false);
+      return { success: true, count: accounts.length };
+    },
+    []
+  );
+
+  const syncAllUsersToSpreadsheet = useCallback(async (): Promise<{
+    success: boolean;
+    count: number;
+    error?: string;
+  }> => {
+    if (!currentUser || currentUser.role !== 'Admin') {
+      return {
+        success: false,
+        count: 0,
+        error: 'Hanya Admin yang dapat menyinkronkan seluruh akun pengguna ke Google Spreadsheet.',
+      };
+    }
+
+    setIsSyncingUsers(true);
+    try {
+      const targetUrl = (appsScriptUrl || DEFAULT_APPS_SCRIPT_URL).trim();
+      const res = await pushUsersFromAppToSheet(targetUrl, directoryUsersRef.current);
+      return { success: res.success, count: res.count, error: res.error };
+    } finally {
+      setIsSyncingUsers(false);
+    }
+  }, [appsScriptUrl, currentUser, pushUsersFromAppToSheet]);
+
+  const refreshUsersFromSpreadsheet = useCallback(
+    async (targetUrl?: string): Promise<boolean> => {
+      const urlToFetch = (targetUrl || appsScriptUrl || DEFAULT_APPS_SCRIPT_URL).trim();
+      usersAbortRef.current?.abort();
+      const controller = new AbortController();
+      usersAbortRef.current = controller;
+
+      setIsSyncingUsers(true);
+      try {
+        const res = await fetchUsersFromAppsScript(urlToFetch, controller.signal);
+        if (controller.signal.aborted) return false;
+
+        if (!res.usersSheetSupported) {
+          setIsUsersSheetLive(false);
+          setUsersSheetUnsupported(true);
+          return false;
+        }
+
+        setUsersSheetUnsupported(false);
+        setIsUsersSheetLive(true);
+
+        if (res.users.length === 0) {
+          // Tab Users is empty in Google Spreadsheet -> sync users from App to Spreadsheet first
+          const seeded = await pushUsersFromAppToSheet(urlToFetch, directoryUsersRef.current);
+          return seeded.success;
+        }
+
+        setDirectoryUsers(res.users);
+        if (Object.keys(res.passwords).length > 0) {
+          const currentMap = loadStoredPasswords();
+          saveStoredPasswords({ ...currentMap, ...res.passwords });
+        }
+        return true;
+      } catch (err) {
+        if ((err as { name?: string })?.name === 'AbortError') return false;
+        setIsUsersSheetLive(false);
+        return false;
+      } finally {
+        if (usersAbortRef.current === controller) {
+          setIsSyncingUsers(false);
+        }
+      }
+    },
+    [appsScriptUrl, pushUsersFromAppToSheet]
+  );
 
   const refreshFromSpreadsheet = useCallback(
     async (targetUrl?: string): Promise<boolean> => {
@@ -492,9 +635,10 @@ export const GRCProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     [appsScriptUrl, markSyncedNow]
   );
 
-  // Initial load from Google Spreadsheet + periodic refresh every 30s when tab is active and idle
+  // Initial load from Google Spreadsheet (Data + Users) + periodic refresh every 30s when tab is active and idle
   useEffect(() => {
     void refreshFromSpreadsheet(appsScriptUrl);
+    void refreshUsersFromSpreadsheet(appsScriptUrl);
     const intervalId = window.setInterval(() => {
       if (
         typeof document !== 'undefined' &&
@@ -507,8 +651,9 @@ export const GRCProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return () => {
       window.clearInterval(intervalId);
       fetchAbortRef.current?.abort();
+      usersAbortRef.current?.abort();
     };
-  }, [appsScriptUrl, refreshFromSpreadsheet]);
+  }, [appsScriptUrl, refreshFromSpreadsheet, refreshUsersFromSpreadsheet]);
 
   const updateAppsScriptUrl = async (
     url: string
@@ -643,6 +788,9 @@ export const GRCProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     );
     setCurrentUser(loggedInProfile);
     setDbSyncError(null);
+
+    // Record Login Terakhir directly in Google Spreadsheet Users tab (non-blocking)
+    void recordUserLoginInAppsScript(appsScriptUrl, loggedInProfile.id);
     return { success: true };
   };
 
@@ -712,6 +860,22 @@ export const GRCProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         minute: '2-digit',
       }),
     };
+
+    const userAccount = serializeUserToSheetAccount(newUser, initialPassword);
+    const remoteRes = await handleCreateUserInAppsScript(appsScriptUrl, userAccount);
+    if (!remoteRes.ok) {
+      if (remoteRes.unsupportedAction || remoteRes.doPostMissing) {
+        setUsersSheetUnsupported(true);
+      } else if (isUsersSheetLive) {
+        return {
+          success: false,
+          error: remoteRes.message || 'Gagal menambahkan pengguna ke tab Users Google Spreadsheet.',
+        };
+      }
+    } else {
+      setIsUsersSheetLive(true);
+      setUsersSheetUnsupported(false);
+    }
 
     const auditEntry: AuditLogEntry = {
       id: `audit-${Date.now()}`,
@@ -790,15 +954,37 @@ export const GRCProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     saveStoredPasswords(passwords);
 
-    setDirectoryUsers((prev) => {
-      const merged = new Map<string, UserProfile>();
-      for (const u of prev) merged.set(u.email.trim().toLowerCase(), u);
-      for (const s of syncedList) merged.set(s.email.trim().toLowerCase(), s);
-      return Array.from(merged.values());
-    });
+    const mergedMap = new Map<string, UserProfile>();
+    for (const u of directoryUsers) mergedMap.set(u.email.trim().toLowerCase(), u);
+    for (const s of syncedList) mergedMap.set(s.email.trim().toLowerCase(), s);
+    const mergedUsers = Array.from(mergedMap.values());
+
+    setDirectoryUsers(mergedUsers);
+
+    const errors: string[] = [];
+    const accountsToSync = mergedUsers.map((u) =>
+      serializeUserToSheetAccount(
+        u,
+        passwords[u.email.trim().toLowerCase()] ||
+          (u.username.toLowerCase() === DEFAULT_ADMIN_USERNAME
+            ? DEFAULT_ADMIN_PASSWORD
+            : DEFAULT_USER_PASSWORD)
+      )
+    );
+    const remoteRes = await syncUsersToAppsScript(appsScriptUrl, accountsToSync);
+    if (!remoteRes.ok) {
+      if (remoteRes.unsupportedAction || remoteRes.doPostMissing) {
+        setUsersSheetUnsupported(true);
+      } else if (remoteRes.message) {
+        errors.push(remoteRes.message);
+      }
+    } else {
+      setIsUsersSheetLive(true);
+      setUsersSheetUnsupported(false);
+    }
 
     setIsProvisioningUsers(false);
-    return { created, linked, failed: 0, errors: [] };
+    return { created, linked, failed: errors.length > 0 ? 1 : 0, errors };
   };
 
   const resetAdminCredentialsToDefault = async (): Promise<{
@@ -841,13 +1027,21 @@ export const GRCProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setCurrentUser(updatedAdmin);
     }
 
+    const remoteRes = await handleUpdateUserInAppsScript(
+      appsScriptUrl,
+      serializeUserToSheetAccount(updatedAdmin, DEFAULT_ADMIN_PASSWORD)
+    );
+    if (remoteRes.unsupportedAction || remoteRes.doPostMissing) {
+      setUsersSheetUnsupported(true);
+    }
+
     return { success: true, mode: 'updated' };
   };
 
-  const updateUser = (
+  const updateUser = async (
     userId: string,
     updates: Partial<UserProfile>
-  ): { success: boolean; error?: string } => {
+  ): Promise<{ success: boolean; error?: string }> => {
     if (!currentUser || currentUser.role !== 'Admin') {
       return {
         success: false,
@@ -870,11 +1064,33 @@ export const GRCProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const passwords = loadStoredPasswords();
     const oldEmailKey = targetUser.email.trim().toLowerCase();
     const newEmailKey = updatedUser.email;
-    if (nextPassword && nextPassword.trim()) {
-      passwords[newEmailKey] = nextPassword.trim();
-    } else if (oldEmailKey !== newEmailKey && passwords[oldEmailKey]) {
-      passwords[newEmailKey] = passwords[oldEmailKey];
+    const resolvedPassword =
+      nextPassword && nextPassword.trim()
+        ? nextPassword.trim()
+        : passwords[oldEmailKey] ||
+          (updatedUser.username.toLowerCase() === DEFAULT_ADMIN_USERNAME
+            ? DEFAULT_ADMIN_PASSWORD
+            : DEFAULT_USER_PASSWORD);
+
+    const remoteRes = await handleUpdateUserInAppsScript(
+      appsScriptUrl,
+      serializeUserToSheetAccount(updatedUser, resolvedPassword)
+    );
+    if (!remoteRes.ok) {
+      if (remoteRes.unsupportedAction || remoteRes.doPostMissing) {
+        setUsersSheetUnsupported(true);
+      } else if (isUsersSheetLive) {
+        return {
+          success: false,
+          error: remoteRes.message || 'Gagal memperbarui pengguna di tab Users Google Spreadsheet.',
+        };
+      }
+    } else {
+      setIsUsersSheetLive(true);
+      setUsersSheetUnsupported(false);
     }
+
+    passwords[newEmailKey] = resolvedPassword;
     saveStoredPasswords(passwords);
 
     setDirectoryUsers((prev) => prev.map((u) => (u.id === userId ? updatedUser : u)));
@@ -900,7 +1116,9 @@ export const GRCProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return { success: true };
   };
 
-  const deleteUser = (userId: string): { success: boolean; error?: string } => {
+  const deleteUser = async (
+    userId: string
+  ): Promise<{ success: boolean; error?: string }> => {
     if (!currentUser || currentUser.role !== 'Admin') {
       return {
         success: false,
@@ -915,6 +1133,21 @@ export const GRCProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const targetUser = directoryUsers.find((u) => u.id === userId);
     if (!targetUser) {
       return { success: false, error: 'Pengguna tidak ditemukan.' };
+    }
+
+    const remoteRes = await handleDeleteUserInAppsScript(appsScriptUrl, userId);
+    if (!remoteRes.ok) {
+      if (remoteRes.unsupportedAction || remoteRes.doPostMissing) {
+        setUsersSheetUnsupported(true);
+      } else if (isUsersSheetLive) {
+        return {
+          success: false,
+          error: remoteRes.message || 'Gagal menghapus pengguna dari tab Users Google Spreadsheet.',
+        };
+      }
+    } else {
+      setIsUsersSheetLive(true);
+      setUsersSheetUnsupported(false);
     }
 
     setDirectoryUsers((prev) => prev.filter((u) => u.id !== userId));
@@ -937,21 +1170,26 @@ export const GRCProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return { success: true };
   };
 
-  const toggleUserStatus = (userId: string) => {
+  const toggleUserStatus = async (
+    userId: string
+  ): Promise<{ success: boolean; error?: string }> => {
     const targetUser = directoryUsers.find((u) => u.id === userId);
-    if (!targetUser) return;
+    if (!targetUser) return { success: false, error: 'Pengguna tidak ditemukan.' };
     const newStatus = targetUser.status === 'active' ? 'inactive' : 'active';
-    updateUser(userId, { status: newStatus });
+    return updateUser(userId, { status: newStatus });
   };
 
-  const canEditSatker = (satker: SatkerData): boolean => {
-    if (!currentUser || currentUser.role === 'Viewer') return false;
-    if (currentUser.role === 'Admin') return true;
-    if (currentUser.role === 'Satker PIC') {
-      return currentUser.assignedSatker?.toLowerCase() === satker.satker.toLowerCase();
-    }
-    return false;
-  };
+  const canEditSatker = useCallback(
+    (satker: SatkerData): boolean => {
+      if (!currentUser || currentUser.role === 'Viewer') return false;
+      if (currentUser.role === 'Admin') return true;
+      if (currentUser.role === 'Satker PIC') {
+        return currentUser.assignedSatker?.toLowerCase() === satker.satker.toLowerCase();
+      }
+      return false;
+    },
+    [currentUser]
+  );
 
   const updateSatkerField = (
     satkerNo: number,
@@ -1296,6 +1534,11 @@ export const GRCProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         provisionAllSatkerAccounts,
         resetAdminCredentialsToDefault,
         isProvisioningUsers,
+        isUsersSheetLive,
+        usersSheetUnsupported,
+        isSyncingUsers,
+        refreshUsersFromSpreadsheet,
+        syncAllUsersToSpreadsheet,
         selectedSatkerNo,
         setSelectedSatkerNo,
         activeTab,
