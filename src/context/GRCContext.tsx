@@ -20,9 +20,12 @@ import { recalculateSatkerScores, calculateSummaryStats } from '../utils/grcCalc
 import {
   BOOTSTRAP_ADMIN_EMAIL,
   formatFirebaseAuthError,
+  getEffectiveEmailVerified,
   getFirebaseAuthErrorCode,
   linkOrUpdateCurrentUserPassword,
   provisionAuthAccountAsAdmin,
+  reloadCurrentFirebaseUser,
+  sendCurrentUserVerificationEmail,
   signInWithEmail,
   signInWithGoogle,
   signOutFirebase,
@@ -235,6 +238,7 @@ interface GRCContextType {
   setSpreadsheetEditLocked: (locked: boolean) => void;
   updateAppConfiguration: (updates: Partial<AppConfiguration>) => Promise<void>;
   firebaseUser: User | null;
+  isEffectiveEmailVerified: boolean;
   isFirestoreLive: boolean;
   isDbConnected: boolean;
   isDbConnecting: boolean;
@@ -246,6 +250,8 @@ interface GRCContextType {
   isDatabaseModalOpen: boolean;
   setIsDatabaseModalOpen: (open: boolean) => void;
   connectDatabaseWithGoogle: () => Promise<boolean>;
+  sendVerificationEmailToCurrentUser: () => Promise<{ success: boolean; error?: string }>;
+  refreshAuthSession: () => Promise<void>;
   disconnectDatabase: () => Promise<void>;
   syncLocalStateToDatabase: () => Promise<void>;
 }
@@ -362,6 +368,7 @@ export const GRCProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Firebase Auth + Firestore State
   const [firebaseUser, setFirebaseUser] = useState<User | null>(null);
+  const [isEffectiveEmailVerified, setIsEffectiveEmailVerified] = useState(false);
   const [isFirestoreLive, setIsFirestoreLive] = useState(false);
   const [isDbConnecting, setIsDbConnecting] = useState(false);
   const [isSyncingDb, setIsSyncingDb] = useState(false);
@@ -443,21 +450,19 @@ export const GRCProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
   }, [markSyncedNow]);
 
-  // 2. Firebase Auth listener ONLY for Admin/Editor write privileges & PII user management
-  useEffect(() => {
-    let unsubUsers: (() => void) | null = null;
-    let isCancelled = false;
+  const unsubUsersRef = React.useRef<(() => void) | null>(null);
+  const syncSeqRef = React.useRef(0);
 
-    const cleanupUsers = () => {
-      unsubUsers?.();
-      unsubUsers = null;
-    };
-
-    const unsubAuth = subscribeToFirebaseAuth(async (user) => {
-      cleanupUsers();
+  // 2. Firebase Auth listener + explicit re-sync helper for Admin/Editor write privileges & PII user management
+  const syncAuthSession = useCallback(
+    async (user: User | null) => {
+      const seq = ++syncSeqRef.current;
+      unsubUsersRef.current?.();
+      unsubUsersRef.current = null;
       setFirebaseUser(user);
 
       if (!user) {
+        setIsEffectiveEmailVerified(false);
         setUsers([]);
         setCurrentUser(PUBLIC_VIEWER_USER);
         return;
@@ -468,13 +473,18 @@ export const GRCProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       try {
         const emailLower = (user.email || '').trim().toLowerCase();
-        const isBootstrap = user.emailVerified && emailLower === BOOTSTRAP_ADMIN_EMAIL.toLowerCase();
+        const effectiveVerified = await getEffectiveEmailVerified(user);
+        if (seq !== syncSeqRef.current) return;
+        setIsEffectiveEmailVerified(effectiveVerified);
+
+        const isBootstrap =
+          effectiveVerified && emailLower === BOOTSTRAP_ADMIN_EMAIL.toLowerCase();
         const { isAdmin, userDoc, hasFirestoreRole } = await resolveUserRoleFromFirestore(
           emailLower,
           user.uid,
-          user.emailVerified
+          effectiveVerified
         );
-        if (isCancelled) return;
+        if (seq !== syncSeqRef.current) return;
 
         const defaultAdminProfile: UserProfile = {
           ...INITIAL_USERS[0],
@@ -498,9 +508,9 @@ export const GRCProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           const seedMatch = INITIAL_USERS.find(
             (u) => u.email.trim().toLowerCase() === emailLower
           );
-          if (emailLower === BOOTSTRAP_ADMIN_EMAIL.toLowerCase() && !user.emailVerified) {
+          if (emailLower === BOOTSTRAP_ADMIN_EMAIL.toLowerCase() && !effectiveVerified) {
             setDbSyncError(
-              `Akun ${emailLower} masuk tanpa verifikasi Google (email_verified = false), sehingga Firestore menolak izin tulis Admin (Missing or insufficient permissions). Silakan keluar lalu klik "Sign in with Google" menggunakan ${emailLower}, kemudian klik "Reset admin.p2" di menu Database.`
+              `Akun ${emailLower} belum terverifikasi (email_verified = false) pada token Firebase Auth saat ini. Kirim email verifikasi lalu klik "Muat Ulang Status" di menu Database, atau masuk ulang dengan Google setelah verifikasi.`
             );
           } else if (seedMatch && !hasFirestoreRole) {
             setDbSyncError(
@@ -523,9 +533,8 @@ export const GRCProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           });
         }
 
-        // Seed Firestore automatically on first verified Admin sign-in when database is empty
         const alreadySeeded = await checkIsDatabaseSeeded();
-        if (isCancelled) return;
+        if (seq !== syncSeqRef.current) return;
 
         if (!alreadySeeded && isAdmin) {
           const seededUsers = INITIAL_USERS.map((u) =>
@@ -552,11 +561,11 @@ export const GRCProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           });
         }
 
-        unsubUsers = subscribeToUsers(
+        unsubUsersRef.current = subscribeToUsers(
           isBootstrap,
           user.uid,
           emailLower || null,
-          user.emailVerified,
+          effectiveVerified,
           (dbUsers) => {
             setUsers(dbUsers);
             markSyncedNow();
@@ -568,22 +577,31 @@ export const GRCProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           err instanceof Error ? err.message : 'Gagal memverifikasi otoritas akun pada Firestore.'
         );
       } finally {
-        if (!isCancelled) setIsSyncingDb(false);
+        if (seq === syncSeqRef.current) setIsSyncingDb(false);
       }
+    },
+    [markSyncedNow]
+  );
+
+  useEffect(() => {
+    const unsubAuth = subscribeToFirebaseAuth((user) => {
+      void syncAuthSession(user);
     });
 
     return () => {
-      isCancelled = true;
-      cleanupUsers();
+      syncSeqRef.current += 1;
+      unsubUsersRef.current?.();
+      unsubUsersRef.current = null;
       unsubAuth();
     };
-  }, [markSyncedNow]);
+  }, [syncAuthSession]);
 
   const connectDatabaseWithGoogle = async (): Promise<boolean> => {
     setIsDbConnecting(true);
     setDbSyncError(null);
     try {
-      await signInWithGoogle();
+      const signedInUser = await signInWithGoogle();
+      await syncAuthSession(signedInUser);
       return true;
     } catch (err) {
       const msg = formatFirebaseAuthError(err);
@@ -594,8 +612,33 @@ export const GRCProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
+  const sendVerificationEmailToCurrentUser = async (): Promise<{
+    success: boolean;
+    error?: string;
+  }> => {
+    try {
+      await sendCurrentUserVerificationEmail();
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: formatFirebaseAuthError(err) };
+    }
+  };
+
+  const refreshAuthSession = async (): Promise<void> => {
+    setIsSyncingDb(true);
+    try {
+      const reloaded = await reloadCurrentFirebaseUser();
+      await syncAuthSession(reloaded);
+    } catch (err) {
+      setDbSyncError(formatFirebaseAuthError(err));
+    } finally {
+      setIsSyncingDb(false);
+    }
+  };
+
   const disconnectDatabase = async (): Promise<void> => {
     await signOutFirebase();
+    setIsEffectiveEmailVerified(false);
     setUsers([]);
     setCurrentUser(PUBLIC_VIEWER_USER);
     setDbSyncError(null);
@@ -967,8 +1010,9 @@ export const GRCProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     try {
       const mode = await linkOrUpdateCurrentUserPassword(DEFAULT_ADMIN_PASSWORD);
       const emailLower = (firebaseUser.email || DEFAULT_ADMIN_EMAIL).trim().toLowerCase();
+      const effectiveVerified = await getEffectiveEmailVerified(firebaseUser);
       const isBootstrap =
-        firebaseUser.emailVerified &&
+        effectiveVerified &&
         emailLower === BOOTSTRAP_ADMIN_EMAIL.toLowerCase();
 
       const adminDoc =
@@ -1394,6 +1438,7 @@ export const GRCProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setSpreadsheetEditLocked,
         updateAppConfiguration,
         firebaseUser,
+        isEffectiveEmailVerified,
         isFirestoreLive,
         isDbConnected,
         isDbConnecting,
@@ -1405,6 +1450,8 @@ export const GRCProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         isDatabaseModalOpen,
         setIsDatabaseModalOpen,
         connectDatabaseWithGoogle,
+        sendVerificationEmailToCurrentUser,
+        refreshAuthSession,
         disconnectDatabase,
         syncLocalStateToDatabase,
       }}

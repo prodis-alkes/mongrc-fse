@@ -23,6 +23,7 @@ export const DatabaseConfigModal: React.FC = () => {
     isDatabaseModalOpen,
     setIsDatabaseModalOpen,
     firebaseUser,
+    isEffectiveEmailVerified,
     isFirestoreLive,
     isDbConnected,
     isDbConnecting,
@@ -33,6 +34,8 @@ export const DatabaseConfigModal: React.FC = () => {
     appConfig,
     updateAppConfiguration,
     connectDatabaseWithGoogle,
+    sendVerificationEmailToCurrentUser,
+    refreshAuthSession,
     disconnectDatabase,
     syncLocalStateToDatabase,
     resetAdminCredentialsToDefault,
@@ -120,9 +123,9 @@ export const DatabaseConfigModal: React.FC = () => {
                       </div>
                       <div className="text-[11px] text-slate-500 dark:text-slate-400">
                         Login sebagai: <span className="font-semibold text-slate-700 dark:text-slate-300">{firebaseUser?.email}</span>
-                        {!firebaseUser?.emailVerified && (
+                        {!isEffectiveEmailVerified && (
                           <span className="text-amber-700 dark:text-amber-300 font-semibold">
-                            {' '}· Email belum terverifikasi Google
+                            {' '}· Email belum terverifikasi
                           </span>
                         )}
                         {lastSyncedAt && <span> · Sinkron terakhir: {lastSyncedAt}</span>}
@@ -206,16 +209,46 @@ export const DatabaseConfigModal: React.FC = () => {
                         </button>
                       </>
                     )}
-                    {!isAdmin && !firebaseUser?.emailVerified && (
-                      <button
-                        type="button"
-                        onClick={() => void connectDatabaseWithGoogle()}
-                        disabled={isDbConnecting}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-900 dark:bg-blue-700 hover:bg-blue-800 dark:hover:bg-blue-600 text-white font-semibold transition-colors disabled:opacity-50 cursor-pointer"
-                      >
-                        <KeyRound className="w-3.5 h-3.5" />
-                        <span>{isDbConnecting ? 'Menghubungkan...' : 'Verifikasi Google Admin'}</span>
-                      </button>
+                    {!isAdmin && !isEffectiveEmailVerified && (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => void connectDatabaseWithGoogle()}
+                          disabled={isDbConnecting}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-900 dark:bg-blue-700 hover:bg-blue-800 dark:hover:bg-blue-600 text-white font-semibold transition-colors disabled:opacity-50 cursor-pointer"
+                        >
+                          <KeyRound className="w-3.5 h-3.5" />
+                          <span>{isDbConnecting ? 'Menghubungkan...' : 'Masuk Google Admin'}</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            setAdminResetNotice(null);
+                            const res = await sendVerificationEmailToCurrentUser();
+                            if (res.success) {
+                              setAdminResetNotice({
+                                ok: true,
+                                text: `Email verifikasi dikirim ke ${firebaseUser?.email}. Klik tautan di email lalu klik "Muat Ulang Status".`,
+                              });
+                            } else if (res.error) {
+                              setAdminResetNotice({ ok: false, text: res.error });
+                            }
+                          }}
+                          disabled={isSyncingDb}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/60 text-amber-900 dark:text-amber-200 hover:bg-amber-100 dark:hover:bg-amber-900/60 font-semibold transition-colors disabled:opacity-50 cursor-pointer"
+                        >
+                          <span>Kirim Email Verifikasi</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void refreshAuthSession()}
+                          disabled={isSyncingDb}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 font-medium transition-colors disabled:opacity-50 cursor-pointer"
+                        >
+                          <RefreshCw className={`w-3.5 h-3.5 ${isSyncingDb ? 'animate-spin' : ''}`} />
+                          <span>Muat Ulang Status</span>
+                        </button>
+                      </>
                     )}
                     <button
                       type="button"

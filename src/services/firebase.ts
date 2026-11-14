@@ -117,7 +117,32 @@ export const subscribeToFirebaseAuth = (
 
 export const signInWithGoogle = async (): Promise<User> => {
   const result = await signInWithPopup(auth, provider);
-  return result.user;
+  await result.user.reload().catch(() => {});
+  await result.user.getIdToken(true).catch(() => {});
+  return auth.currentUser || result.user;
+};
+
+export const getEffectiveEmailVerified = async (user: User): Promise<boolean> => {
+  if (user.emailVerified) return true;
+  try {
+    const tokenRes = await user.getIdTokenResult();
+    if (
+      tokenRes.claims?.email_verified === true ||
+      tokenRes.signInProvider === 'google.com'
+    ) {
+      return true;
+    }
+  } catch {
+    // ignore token read error
+  }
+  return false;
+};
+
+export const reloadCurrentFirebaseUser = async (): Promise<User | null> => {
+  if (!auth.currentUser) return null;
+  await auth.currentUser.reload();
+  await auth.currentUser.getIdToken(true);
+  return auth.currentUser;
 };
 
 export const signInWithEmail = async (
