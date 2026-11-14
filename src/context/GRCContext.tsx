@@ -361,9 +361,17 @@ export const GRCProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const storedConfig = localStorage.getItem('mongrc_config_v1');
       if (storedConfig) {
         const parsed = JSON.parse(storedConfig);
+        const legacyPeriod = String(parsed.evaluationPeriod ?? '').trim();
+        const isLegacyYearOnly = !parsed.evaluationYear && /^\d{4}$/.test(legacyPeriod);
         return {
           ...DEFAULT_APP_CONFIG,
           ...parsed,
+          evaluationYear:
+            parsed.evaluationYear ??
+            (isLegacyYearOnly ? legacyPeriod : DEFAULT_APP_CONFIG.evaluationYear),
+          evaluationPeriod: isLegacyYearOnly
+            ? DEFAULT_APP_CONFIG.evaluationPeriod
+            : legacyPeriod || DEFAULT_APP_CONFIG.evaluationPeriod,
           spreadsheetEditLocked:
             parsed.spreadsheetEditLocked !== undefined
               ? Boolean(parsed.spreadsheetEditLocked)

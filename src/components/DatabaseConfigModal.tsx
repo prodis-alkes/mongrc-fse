@@ -43,6 +43,7 @@ export const DatabaseConfigModal: React.FC = () => {
   } = useGRC();
 
   const [appTitle, setAppTitle] = useState(appConfig.appTitle);
+  const [evaluationYear, setEvaluationYear] = useState(appConfig.evaluationYear || '2026');
   const [evaluationPeriod, setEvaluationPeriod] = useState(appConfig.evaluationPeriod);
   const [editLocked, setEditLocked] = useState(appConfig.spreadsheetEditLocked);
   const [scriptUrlInput, setScriptUrlInput] = useState(appsScriptUrl);
@@ -56,6 +57,7 @@ export const DatabaseConfigModal: React.FC = () => {
   useEffect(() => {
     if (isDatabaseModalOpen) {
       setAppTitle(appConfig.appTitle);
+      setEvaluationYear(appConfig.evaluationYear || '2026');
       setEvaluationPeriod(appConfig.evaluationPeriod);
       setEditLocked(appConfig.spreadsheetEditLocked);
       setScriptUrlInput(appsScriptUrl);
@@ -69,7 +71,8 @@ export const DatabaseConfigModal: React.FC = () => {
     e.preventDefault();
     await updateAppConfiguration({
       appTitle: appTitle.trim() || 'MonGRC Ditjen P2',
-      evaluationPeriod: evaluationPeriod.trim() || '2026',
+      evaluationYear: evaluationYear.trim() || '2026',
+      evaluationPeriod: evaluationPeriod.trim() || 'Triwulan IV',
       spreadsheetEditLocked: editLocked,
     });
     setSavedNotice(true);
@@ -340,17 +343,33 @@ export const DatabaseConfigModal: React.FC = () => {
                   className="w-full px-3 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 disabled:opacity-60 focus:outline-hidden focus:ring-2 focus:ring-blue-600"
                 />
               </div>
-              <div>
-                <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                  Periode Evaluasi
-                </label>
-                <input
-                  type="text"
-                  disabled={!isAdmin}
-                  value={evaluationPeriod}
-                  onChange={(e) => setEvaluationPeriod(e.target.value)}
-                  className="w-full px-3 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 disabled:opacity-60 font-mono focus:outline-hidden focus:ring-2 focus:ring-blue-600"
-                />
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                    Tahun
+                  </label>
+                  <input
+                    type="text"
+                    disabled={!isAdmin}
+                    value={evaluationYear}
+                    onChange={(e) => setEvaluationYear(e.target.value)}
+                    placeholder="2026"
+                    className="w-full px-3 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 disabled:opacity-60 font-mono focus:outline-hidden focus:ring-2 focus:ring-blue-600"
+                  />
+                </div>
+                <div>
+                  <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                    Periode
+                  </label>
+                  <input
+                    type="text"
+                    disabled={!isAdmin}
+                    value={evaluationPeriod}
+                    onChange={(e) => setEvaluationPeriod(e.target.value)}
+                    placeholder="Triwulan IV"
+                    className="w-full px-3 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 disabled:opacity-60 font-mono focus:outline-hidden focus:ring-2 focus:ring-blue-600"
+                  />
+                </div>
               </div>
             </div>
 

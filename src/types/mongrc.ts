@@ -127,6 +127,7 @@ export interface SummaryThresholdResult {
 
 export interface AppConfiguration {
   spreadsheetEditLocked: boolean;
+  evaluationYear?: string;
   evaluationPeriod: string;
   appTitle: string;
   updatedBy?: string;

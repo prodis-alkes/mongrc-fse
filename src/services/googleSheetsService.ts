@@ -19,7 +19,8 @@ const APPS_SCRIPT_URL_STORAGE_KEY = 'mongrc_apps_script_url_v1';
 
 export const DEFAULT_APP_CONFIG: AppConfiguration = {
   spreadsheetEditLocked: true,
-  evaluationPeriod: '2026',
+  evaluationYear: '2026',
+  evaluationPeriod: 'Triwulan IV',
   appTitle: 'MonGRC Ditjen P2',
 };
 
