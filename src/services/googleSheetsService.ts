@@ -680,7 +680,7 @@ function doGet(e) {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     const targetSheetName = (e && e.parameter && e.parameter.sheet) ? e.parameter.sheet : DATA_SHEET_NAME;
     const sheet = targetSheetName === USERS_SHEET_NAME
-      ? ss.getSheetByName(USERS_SHEET_NAME)
+      ? ensureUsersSheet(ss)
       : (ss.getSheetByName(targetSheetName) || ss.getSheets()[0]);
 
     if (!sheet) {
@@ -712,7 +712,11 @@ function doPost(e) {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     const payload = JSON.parse(e.postData.contents);
     const action = payload.action || 'update';
-    const sheetName = payload.sheet || DATA_SHEET_NAME;
+
+    // Otomatis arahkan ke sheet 'Users' jika action terkait user meskipun payload.sheet lupa dikirim
+    const isUserAction = ['updateUser', 'createUser', 'deleteUser', 'updateLogin', 'syncUsers'].indexOf(action) !== -1;
+    const sheetName = payload.sheet || (isUserAction ? USERS_SHEET_NAME : DATA_SHEET_NAME);
+
     const sheet = sheetName === USERS_SHEET_NAME
       ? ensureUsersSheet(ss)
       : (ss.getSheetByName(sheetName) || ss.getSheets()[0]);
@@ -722,11 +726,18 @@ function doPost(e) {
 
     const mapObjectToRow = (obj, existingRow) => {
       return headers.map((header, colIdx) => {
-        if (Object.prototype.hasOwnProperty.call(obj, header)) return obj[header];
+        if (Object.prototype.hasOwnProperty.call(obj, header)) {
+          // Jangan timpa Password lama jika frontend mengirim password kosong saat edit
+          if (header === 'Password' && !obj[header] && existingRow) {
+            return existingRow[colIdx];
+          }
+          return obj[header];
+        }
         return existingRow ? existingRow[colIdx] : '';
       });
     };
 
+    // 1. DATA TAB OPERATIONS
     if (action === 'update') {
       const record = payload.row || payload.data || payload;
       const targetNo = Number(payload.no || record.No);
@@ -756,7 +767,7 @@ function doPost(e) {
       return jsonResponse({ status: 'success', message: 'Bulk update completed' });
     }
 
-    // USERS TAB OPERATIONS
+    // 2. USERS TAB OPERATIONS
     const idColIdx = headers.indexOf('ID');
 
     if (action === 'updateUser') {
@@ -771,7 +782,11 @@ function doPost(e) {
     }
 
     if (action === 'createUser') {
-      sheet.appendRow(mapObjectToRow(payload.user, null));
+      const newUser = payload.user || {};
+      if (!newUser['Dibuat Pada']) {
+        newUser['Dibuat Pada'] = Utilities.formatDate(new Date(), 'Asia/Jakarta', 'yyyy-MM-dd HH:mm');
+      }
+      sheet.appendRow(mapObjectToRow(newUser, null));
       return jsonResponse({ status: 'success', message: 'User ditambahkan' });
     }
 
@@ -789,10 +804,11 @@ function doPost(e) {
     if (action === 'updateLogin') {
       const targetId = String(payload.id || '').trim();
       const loginColIdx = headers.indexOf('Login Terakhir');
+      const nowWIB = Utilities.formatDate(new Date(), 'Asia/Jakarta', 'yyyy-MM-dd HH:mm');
       for (let i = 1; i < values.length; i++) {
         if (String(values[i][idColIdx]).trim() === targetId && loginColIdx !== -1) {
-          sheet.getRange(i + 1, loginColIdx + 1).setValue(new Date().toLocaleString('id-ID'));
-          return jsonResponse({ status: 'success' });
+          sheet.getRange(i + 1, loginColIdx + 1).setValue(nowWIB);
+          return jsonResponse({ status: 'success', loginTerakhir: nowWIB });
         }
       }
       return jsonResponse({ status: 'success' });

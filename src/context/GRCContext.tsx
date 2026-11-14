@@ -1064,17 +1064,17 @@ export const GRCProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const passwords = loadStoredPasswords();
     const oldEmailKey = targetUser.email.trim().toLowerCase();
     const newEmailKey = updatedUser.email;
+    const explicitPassword = nextPassword && nextPassword.trim() ? nextPassword.trim() : undefined;
     const resolvedPassword =
-      nextPassword && nextPassword.trim()
-        ? nextPassword.trim()
-        : passwords[oldEmailKey] ||
-          (updatedUser.username.toLowerCase() === DEFAULT_ADMIN_USERNAME
-            ? DEFAULT_ADMIN_PASSWORD
-            : DEFAULT_USER_PASSWORD);
+      explicitPassword ||
+      passwords[oldEmailKey] ||
+      (updatedUser.username.toLowerCase() === DEFAULT_ADMIN_USERNAME
+        ? DEFAULT_ADMIN_PASSWORD
+        : DEFAULT_USER_PASSWORD);
 
     const remoteRes = await handleUpdateUserInAppsScript(
       appsScriptUrl,
-      serializeUserToSheetAccount(updatedUser, resolvedPassword)
+      serializeUserToSheetAccount(updatedUser, explicitPassword)
     );
     if (!remoteRes.ok) {
       if (remoteRes.unsupportedAction || remoteRes.doPostMissing) {
