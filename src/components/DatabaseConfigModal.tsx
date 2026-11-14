@@ -106,50 +106,52 @@ export const DatabaseConfigModal: React.FC = () => {
         <div className="p-6 overflow-y-auto space-y-5 custom-scrollbar text-xs">
           {/* Firebase Authentication & Database Status */}
           <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/40 space-y-3">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div className="flex items-center gap-2.5">
+            <div className="flex flex-col gap-3">
+              <div className="flex items-center gap-2 min-w-0">
                 {isDbConnected ? (
                   <>
                     <CheckCircle2
-                      className={`w-5 h-5 shrink-0 ${
+                      className={`w-4 h-4 shrink-0 ${
                         isAdmin ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-500'
                       }`}
                     />
-                    <div>
-                      <div className="font-bold text-slate-900 dark:text-slate-100">
+                    <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 min-w-0">
+                      <span className="font-bold text-slate-900 dark:text-slate-100">
                         {isAdmin
                           ? 'Admin Aktif (Baca & Tulis Database)'
                           : `Terautentikasi (${currentUser?.role || 'Viewer'})`}
-                      </div>
-                      <div className="text-[11px] text-slate-500 dark:text-slate-400">
-                        Login sebagai: <span className="font-semibold text-slate-700 dark:text-slate-300">{firebaseUser?.email}</span>
+                      </span>
+                      <span className="text-slate-300 dark:text-slate-600 hidden sm:inline">·</span>
+                      <span className="text-[11px] text-slate-500 dark:text-slate-400 break-words min-w-0">
+                        Login: <span className="font-semibold text-slate-700 dark:text-slate-300">{firebaseUser?.email}</span>
                         {!isEffectiveEmailVerified && (
                           <span className="text-amber-700 dark:text-amber-300 font-semibold">
                             {' '}· Email belum terverifikasi
                           </span>
                         )}
-                        {lastSyncedAt && <span> · Sinkron terakhir: {lastSyncedAt}</span>}
-                      </div>
+                        {lastSyncedAt && <span> · Sinkron: {lastSyncedAt}</span>}
+                      </span>
                     </div>
                   </>
                 ) : (
                   <>
-                    <CheckCircle2 className={`w-5 h-5 shrink-0 ${isFirestoreLive ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-500'}`} />
-                    <div>
-                      <div className="font-bold text-slate-900 dark:text-slate-100">
+                    <CheckCircle2 className={`w-4 h-4 shrink-0 ${isFirestoreLive ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-500'}`} />
+                    <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 min-w-0">
+                      <span className="font-bold text-slate-900 dark:text-slate-100">
                         {isFirestoreLive
                           ? 'Terhubung ke Firestore (Read-Only)'
                           : 'Menghubungkan ke Firestore...'}
-                      </div>
-                      <div className="text-[11px] text-slate-500 dark:text-slate-400">
-                        Semua data Satker & konfigurasi terbaca otomatis. Masuk sebagai Admin/Editor untuk mengedit data atau mengelola pengguna.
-                      </div>
+                      </span>
+                      <span className="text-slate-300 dark:text-slate-600 hidden sm:inline">·</span>
+                      <span className="text-[11px] text-slate-500 dark:text-slate-400 break-words min-w-0">
+                        Data Satker terbaca otomatis; masuk Admin/Editor untuk mengedit.
+                      </span>
                     </div>
                   </>
                 )}
               </div>
 
-              <div className="flex items-center gap-2 shrink-0">
+              <div className="flex flex-wrap items-center gap-2">
                 {!isDbConnected ? (
                   <button
                     type="button"
