@@ -154,7 +154,7 @@ export const ExecutiveDashboard: React.FC = () => {
             <span className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
               Kinerja Rata-Rata
             </span>
-            <Award className="w-4 h-4 text-blue-800 dark:text-blue-400" />
+            <Award className="w-5 h-5 text-blue-800 dark:text-blue-400" />
           </div>
           <div className="mt-3 flex items-baseline gap-2">
             <span className="text-3xl font-extrabold text-slate-900 dark:text-slate-100 font-mono tabular-nums">
@@ -174,7 +174,7 @@ export const ExecutiveDashboard: React.FC = () => {
             <span className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
               Tingkat Ketercapaian
             </span>
-            <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+            <CheckCircle2 className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
           </div>
           <div className="mt-3 flex items-baseline gap-2">
             <span className="text-3xl font-extrabold text-slate-900 dark:text-slate-100 font-mono tabular-nums">
@@ -201,7 +201,7 @@ export const ExecutiveDashboard: React.FC = () => {
             <span className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
               Satker Skor Tertinggi
             </span>
-            <TrendingUp className="w-4 h-4 text-blue-700 dark:text-blue-400" />
+            <TrendingUp className="w-5 h-5 text-blue-700 dark:text-blue-400" />
           </div>
           <div className="mt-3">
             <div className="text-lg font-bold text-slate-900 dark:text-slate-100 truncate">
@@ -226,7 +226,7 @@ export const ExecutiveDashboard: React.FC = () => {
             <span className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
               Perlu Akselerasi
             </span>
-            <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+            <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-400" />
           </div>
           <div className="mt-3">
             <div className="text-lg font-bold text-slate-900 dark:text-slate-100 truncate">
