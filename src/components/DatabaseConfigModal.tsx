@@ -107,13 +107,24 @@ export const DatabaseConfigModal: React.FC = () => {
               <div className="flex items-center gap-2.5">
                 {isDbConnected ? (
                   <>
-                    <CheckCircle2 className="w-5 h-5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                    <CheckCircle2
+                      className={`w-5 h-5 shrink-0 ${
+                        isAdmin ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-500'
+                      }`}
+                    />
                     <div>
                       <div className="font-bold text-slate-900 dark:text-slate-100">
-                        Admin / Editor Aktif (Baca & Tulis Database)
+                        {isAdmin
+                          ? 'Admin Aktif (Baca & Tulis Database)'
+                          : `Terautentikasi (${currentUser?.role || 'Viewer'})`}
                       </div>
                       <div className="text-[11px] text-slate-500 dark:text-slate-400">
                         Login sebagai: <span className="font-semibold text-slate-700 dark:text-slate-300">{firebaseUser?.email}</span>
+                        {!firebaseUser?.emailVerified && (
+                          <span className="text-amber-700 dark:text-amber-300 font-semibold">
+                            {' '}· Email belum terverifikasi Google
+                          </span>
+                        )}
                         {lastSyncedAt && <span> · Sinkron terakhir: {lastSyncedAt}</span>}
                       </div>
                     </div>
@@ -194,6 +205,17 @@ export const DatabaseConfigModal: React.FC = () => {
                           <span>Sinkronkan Ulang</span>
                         </button>
                       </>
+                    )}
+                    {!isAdmin && !firebaseUser?.emailVerified && (
+                      <button
+                        type="button"
+                        onClick={() => void connectDatabaseWithGoogle()}
+                        disabled={isDbConnecting}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-900 dark:bg-blue-700 hover:bg-blue-800 dark:hover:bg-blue-600 text-white font-semibold transition-colors disabled:opacity-50 cursor-pointer"
+                      >
+                        <KeyRound className="w-3.5 h-3.5" />
+                        <span>{isDbConnecting ? 'Menghubungkan...' : 'Verifikasi Google Admin'}</span>
+                      </button>
                     )}
                     <button
                       type="button"

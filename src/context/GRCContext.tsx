@@ -36,6 +36,7 @@ import {
   createAuditLogInFirestore,
   createCommentInFirestore,
   deleteUserFromFirestore,
+  ensureBootstrapAdminDocsInFirestore,
   resolveUserRoleFromFirestore,
   saveAppConfigToFirestore,
   saveSatkerToFirestore,
@@ -468,70 +469,71 @@ export const GRCProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       try {
         const emailLower = (user.email || '').trim().toLowerCase();
         const isBootstrap = user.emailVerified && emailLower === BOOTSTRAP_ADMIN_EMAIL.toLowerCase();
-        const { isAdmin, userDoc } = await resolveUserRoleFromFirestore(
+        const { isAdmin, userDoc, hasFirestoreRole } = await resolveUserRoleFromFirestore(
           emailLower,
           user.uid,
           user.emailVerified
         );
         if (isCancelled) return;
 
+        const defaultAdminProfile: UserProfile = {
+          ...INITIAL_USERS[0],
+          uid: user.uid,
+          email: emailLower || BOOTSTRAP_ADMIN_EMAIL,
+          name: user.displayName || INITIAL_USERS[0].name,
+          avatarInitials:
+            (user.displayName || 'BH')
+              .split(' ')
+              .slice(0, 2)
+              .map((w) => w[0]?.toUpperCase() || '')
+              .join('') || 'BH',
+          lastLogin: new Date().toLocaleString('id-ID'),
+        };
+
         if (userDoc) {
           setCurrentUser({ ...userDoc, uid: userDoc.uid || user.uid });
         } else if (isAdmin) {
-          setCurrentUser({
-            id: 'user-admin-1',
-            uid: user.uid,
-            username: 'admin.p2',
-            email: emailLower || BOOTSTRAP_ADMIN_EMAIL,
-            nip: '198205142006041002',
-            name: user.displayName || 'Budi Hermawan, S.Kom., M.T.I.',
-            role: 'Admin',
-            agency: 'Setditjen P2 Kemenkes RI',
-            avatarInitials:
-              (user.displayName || 'BH')
-                .split(' ')
-                .slice(0, 2)
-                .map((w) => w[0]?.toUpperCase() || '')
-                .join('') || 'BH',
-            status: 'active',
-            lastLogin: new Date().toLocaleString('id-ID'),
-            createdAt: '2026-01-15 09:00',
-          });
+          setCurrentUser(defaultAdminProfile);
         } else {
           const seedMatch = INITIAL_USERS.find(
             (u) => u.email.trim().toLowerCase() === emailLower
           );
-          if (seedMatch) {
-            setCurrentUser({
-              ...seedMatch,
-              uid: user.uid,
-              lastLogin: new Date().toLocaleString('id-ID'),
-            });
-          } else {
-            setCurrentUser({
-              id: user.uid,
-              uid: user.uid,
-              username: emailLower.split('@')[0] || 'pengguna',
-              email: emailLower,
-              nip: '-',
-              name: user.displayName || emailLower || 'Pengguna Terdaftar',
-              role: 'Viewer',
-              agency: 'Kementerian Kesehatan RI',
-              avatarInitials: (user.displayName || emailLower || 'PG').slice(0, 2).toUpperCase(),
-              status: 'active',
-              createdAt: new Date().toLocaleString('id-ID'),
-            });
+          if (emailLower === BOOTSTRAP_ADMIN_EMAIL.toLowerCase() && !user.emailVerified) {
+            setDbSyncError(
+              `Akun ${emailLower} masuk tanpa verifikasi Google (email_verified = false), sehingga Firestore menolak izin tulis Admin (Missing or insufficient permissions). Silakan keluar lalu klik "Sign in with Google" menggunakan ${emailLower}, kemudian klik "Reset admin.p2" di menu Database.`
+            );
+          } else if (seedMatch && !hasFirestoreRole) {
+            setDbSyncError(
+              `Akun ${emailLower} berhasil masuk ke Firebase Auth, namun profil & hak akses UID belum dihubungkan di Firestore. Minta Admin masuk dengan Google lalu jalankan "Provision 57 Login Satker".`
+            );
           }
+
+          setCurrentUser({
+            id: user.uid,
+            uid: user.uid,
+            username: emailLower.split('@')[0] || 'pengguna',
+            email: emailLower,
+            nip: '-',
+            name: user.displayName || emailLower || 'Pengguna Terdaftar',
+            role: 'Viewer',
+            agency: 'Kementerian Kesehatan RI',
+            avatarInitials: (user.displayName || emailLower || 'PG').slice(0, 2).toUpperCase(),
+            status: 'active',
+            createdAt: new Date().toLocaleString('id-ID'),
+          });
         }
 
-        // Seed Firestore automatically on first Admin sign-in when database is empty
+        // Seed Firestore automatically on first verified Admin sign-in when database is empty
         const alreadySeeded = await checkIsDatabaseSeeded();
         if (isCancelled) return;
 
         if (!alreadySeeded && isAdmin) {
+          const seededUsers = INITIAL_USERS.map((u) =>
+            u.id === 'user-admin-1' ? { ...u, uid: user.uid } : u
+          );
           await seedInitialDatabase({
             satkers: BASELINE_SATKERS,
-            users: INITIAL_USERS,
+            users: seededUsers,
             config: DEFAULT_APP_CONFIG,
             auditLogs: INITIAL_AUDIT_LOGS,
             comments: INITIAL_COMMENTS,
@@ -541,18 +543,23 @@ export const GRCProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           setIsDatabaseSeeded(true);
         }
 
+        if (isBootstrap) {
+          await ensureBootstrapAdminDocsInFirestore({
+            uid: user.uid,
+            email: emailLower || BOOTSTRAP_ADMIN_EMAIL,
+            name: user.displayName || INITIAL_USERS[0].name,
+            adminProfile: userDoc || defaultAdminProfile,
+          });
+        }
+
         unsubUsers = subscribeToUsers(
           isBootstrap,
           user.uid,
           emailLower || null,
           user.emailVerified,
           (dbUsers) => {
-            if (dbUsers.length > 0) {
-              setUsers(dbUsers);
-              markSyncedNow();
-            } else if (isAdmin) {
-              setUsers(INITIAL_USERS);
-            }
+            setUsers(dbUsers);
+            markSyncedNow();
           },
           (errMsg) => setDbSyncError(errMsg)
         );
@@ -595,22 +602,29 @@ export const GRCProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const syncLocalStateToDatabase = async (): Promise<void> => {
-    if (!firebaseUser) {
-      setDbSyncError('Silakan masuk sebagai Admin terlebih dahulu untuk menyinkronkan database.');
+    if (!firebaseUser || currentUser?.role !== 'Admin') {
+      setDbSyncError('Silakan masuk sebagai Admin (Google) terlebih dahulu untuk menyinkronkan database.');
       return;
     }
     setIsSyncingDb(true);
     setDbSyncError(null);
     try {
+      const usersToSync = (users.length > 0 ? users : INITIAL_USERS).map((u) =>
+        u.id === 'user-admin-1' ||
+        u.email.trim().toLowerCase() === (firebaseUser.email || '').trim().toLowerCase()
+          ? { ...u, uid: u.uid || firebaseUser.uid }
+          : u
+      );
       await seedInitialDatabase({
         satkers: satkers.length > 0 ? satkers : BASELINE_SATKERS,
-        users: users.length > 0 ? users : INITIAL_USERS,
+        users: usersToSync,
         config: appConfig,
         auditLogs: auditLogs.length > 0 ? auditLogs : INITIAL_AUDIT_LOGS,
         comments: comments.length > 0 ? comments : INITIAL_COMMENTS,
         authorUid: firebaseUser.uid,
         updatedBy: currentUser?.name || firebaseUser.email || 'Admin',
       });
+      setUsers(usersToSync);
       setIsDatabaseSeeded(true);
       markSyncedNow();
     } catch (err) {
@@ -763,6 +777,7 @@ export const GRCProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     const newUser: UserProfile = {
       ...profileFields,
+      email: profileFields.email.trim().toLowerCase(),
       uid: provisionedUid,
       id: `user-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
       createdAt: new Date().toLocaleString('id-ID', {
@@ -773,8 +788,6 @@ export const GRCProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         minute: '2-digit',
       }),
     };
-
-    setUsers((prev) => [newUser, ...prev]);
 
     const auditEntry: AuditLogEntry = {
       id: `audit-${Date.now()}`,
@@ -790,22 +803,26 @@ export const GRCProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       newValue: `${newUser.name} (${newUser.role})`,
       reason: `Akun baru ditambahkan oleh ${currentUser.name}`,
     };
-    setAuditLogs((prev) => [auditEntry, ...prev]);
 
     setIsSyncingDb(true);
+    setDbSyncError(null);
     try {
       await Promise.all([
         saveUserToFirestore(newUser),
         createAuditLogInFirestore(auditEntry, firebaseUser.uid),
       ]);
+      setUsers((prev) => [newUser, ...prev.filter((u) => u.id !== newUser.id)]);
+      setAuditLogs((prev) => [auditEntry, ...prev.filter((a) => a.id !== auditEntry.id)]);
       markSyncedNow();
+      return { success: true };
     } catch (err) {
-      setDbSyncError(err instanceof Error ? err.message : 'Gagal menyimpan pengguna ke Firestore.');
+      const msg =
+        err instanceof Error ? err.message : 'Gagal menyimpan pengguna ke Firestore.';
+      setDbSyncError(msg);
+      return { success: false, error: msg };
     } finally {
       setIsSyncingDb(false);
     }
-
-    return { success: true };
   };
 
   const provisionAllSatkerAccounts = async (
@@ -897,11 +914,35 @@ export const GRCProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
 
       if (mergedToSave.length > 0) {
-        await upsertUsersToFirestore(mergedToSave);
+        // Include core Admin & Auditor defaults if missing so the directory stays complete
+        const savedEmails = new Set(mergedToSave.map((u) => u.email.trim().toLowerCase()));
+        const extras: UserProfile[] = [];
+        for (const coreUser of INITIAL_USERS.slice(0, 2)) {
+          const emailKey = coreUser.email.trim().toLowerCase();
+          if (!savedEmails.has(emailKey) && !existingByEmail.has(emailKey)) {
+            extras.push(
+              coreUser.id === 'user-admin-1' &&
+                emailKey === (firebaseUser.email || '').trim().toLowerCase()
+                ? { ...coreUser, uid: firebaseUser.uid }
+                : coreUser
+            );
+          }
+        }
+        const finalBatch = [...extras, ...mergedToSave];
+        await upsertUsersToFirestore(finalBatch);
+        setUsers((prev) => {
+          const byId = new Map<string, UserProfile>();
+          for (const u of prev) byId.set(u.id, u);
+          for (const u of finalBatch) byId.set(u.id, u);
+          return Array.from(byId.values());
+        });
         markSyncedNow();
       }
     } catch (err) {
-      errors.push(err instanceof Error ? err.message : 'Gagal menyinkronkan ke Firestore.');
+      const msg = err instanceof Error ? err.message : 'Gagal menyinkronkan ke Firestore.';
+      failed = Math.max(failed, 1);
+      errors.push(msg);
+      setDbSyncError(msg);
     } finally {
       setIsProvisioningUsers(false);
     }
@@ -925,21 +966,36 @@ export const GRCProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setDbSyncError(null);
     try {
       const mode = await linkOrUpdateCurrentUserPassword(DEFAULT_ADMIN_PASSWORD);
+      const emailLower = (firebaseUser.email || DEFAULT_ADMIN_EMAIL).trim().toLowerCase();
+      const isBootstrap =
+        firebaseUser.emailVerified &&
+        emailLower === BOOTSTRAP_ADMIN_EMAIL.toLowerCase();
 
       const adminDoc =
         users.find((u) => u.id === 'user-admin-1') ||
-        users.find((u) => u.email.trim().toLowerCase() === (firebaseUser.email || '').trim().toLowerCase()) ||
+        users.find((u) => u.email.trim().toLowerCase() === emailLower) ||
         INITIAL_USERS[0];
 
       const updatedAdmin: UserProfile = {
         ...adminDoc,
         uid: firebaseUser.uid,
         username: DEFAULT_ADMIN_USERNAME,
-        email: (firebaseUser.email || DEFAULT_ADMIN_EMAIL).trim().toLowerCase(),
+        email: emailLower,
         role: 'Admin',
         status: 'active',
         password: DEFAULT_ADMIN_PASSWORD,
       };
+
+      if (isBootstrap) {
+        await ensureBootstrapAdminDocsInFirestore({
+          uid: firebaseUser.uid,
+          email: emailLower,
+          name: firebaseUser.displayName || updatedAdmin.name,
+          adminProfile: updatedAdmin,
+        });
+      } else {
+        await saveUserToFirestore(updatedAdmin, adminDoc.email);
+      }
 
       setUsers((prev) => {
         const exists = prev.some((u) => u.id === updatedAdmin.id);
@@ -951,7 +1007,6 @@ export const GRCProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setCurrentUser(updatedAdmin);
       }
 
-      await saveUserToFirestore(updatedAdmin, adminDoc.email);
       markSyncedNow();
       return { success: true, mode };
     } catch (err) {

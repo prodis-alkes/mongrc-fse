@@ -68,6 +68,8 @@ export const UserManagementView: React.FC = () => {
   const [formPassword, setFormPassword] = useState('');
   const [formStatus, setFormStatus] = useState<'active' | 'inactive'>('active');
   const [formError, setFormError] = useState<string | null>(null);
+  const [isSavingUser, setIsSavingUser] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   // Delete confirm modal state
   const [deletingUser, setDeletingUser] = useState<UserProfile | null>(null);
@@ -167,24 +169,29 @@ export const UserManagementView: React.FC = () => {
       }
     } else {
       // Create
-      const res = await addUser({
-        name: formName.trim(),
-        username: formUsername.trim(),
-        nip: formNip.trim(),
-        email: formEmail.trim(),
-        role: formRole,
-        agency: formAgency.trim() || (formRole === 'Admin' ? 'Setditjen P2 Kemenkes RI' : 'Balai Karantina Kesehatan'),
-        assignedSatker: assignedSatkerName,
-        assignedSatkerNo: formRole === 'Satker PIC' ? formAssignedSatkerNo : undefined,
-        avatarInitials: initials,
-        status: formStatus,
-        password: formPassword.trim() || DEFAULT_USER_PASSWORD,
-        provisionAuthLogin: true,
-      });
+      setIsSavingUser(true);
+      try {
+        const res = await addUser({
+          name: formName.trim(),
+          username: formUsername.trim(),
+          nip: formNip.trim(),
+          email: formEmail.trim(),
+          role: formRole,
+          agency: formAgency.trim() || (formRole === 'Admin' ? 'Setditjen P2 Kemenkes RI' : 'Balai Karantina Kesehatan'),
+          assignedSatker: assignedSatkerName,
+          assignedSatkerNo: formRole === 'Satker PIC' ? formAssignedSatkerNo : undefined,
+          avatarInitials: initials,
+          status: formStatus,
+          password: formPassword.trim() || DEFAULT_USER_PASSWORD,
+          provisionAuthLogin: true,
+        });
 
-      if (!res.success) {
-        setFormError(res.error || 'Gagal menambahkan pengguna baru.');
-        return;
+        if (!res.success) {
+          setFormError(res.error || 'Gagal menambahkan pengguna baru.');
+          return;
+        }
+      } finally {
+        setIsSavingUser(false);
       }
     }
 
@@ -193,9 +200,10 @@ export const UserManagementView: React.FC = () => {
 
   const handleConfirmDelete = () => {
     if (!deletingUser) return;
+    setActionError(null);
     const res = deleteUser(deletingUser.id);
     if (!res.success) {
-      alert(res.error || 'Gagal menghapus pengguna.');
+      setActionError(res.error || 'Gagal menghapus pengguna.');
     }
     setDeletingUser(null);
   };
@@ -287,6 +295,36 @@ export const UserManagementView: React.FC = () => {
           </div>
         )}
       </div>
+
+      {/* Inline action error or incomplete Firestore directory notice */}
+      {actionError && (
+        <div className="p-3 bg-rose-50 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-800 text-rose-800 dark:text-rose-200 rounded-xl text-xs flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 text-rose-600 dark:text-rose-400 shrink-0" />
+            <span>{actionError}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setActionError(null)}
+            className="text-rose-600 dark:text-rose-300 hover:underline shrink-0 cursor-pointer"
+          >
+            Tutup
+          </button>
+        </div>
+      )}
+
+      {users.length < 59 && !provisionStatus && (
+        <div className="p-3.5 bg-blue-50/70 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800/80 rounded-xl text-xs text-blue-900 dark:text-blue-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="space-y-0.5">
+            <div className="font-bold">
+              Direktori Firestore baru memuat {users.length} akun
+            </div>
+            <p className="text-[11px] text-blue-800/90 dark:text-blue-300/90">
+              Akun yang dibuat langsung di Firebase Console Auth tidak tampil otomatis sebelum profilnya disimpan ke Firestore. Klik <strong>Provision 57 Login Satker</strong> untuk mendaftarkan/menautkan seluruh 57 akun Satker ke Firebase Auth &amp; Firestore, atau gunakan <strong>Tambah Pengguna Baru</strong>.
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Provisioning Status Banner */}
       {provisionStatus && (
@@ -809,9 +847,14 @@ export const UserManagementView: React.FC = () => {
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 text-xs font-semibold text-white bg-blue-900 dark:bg-blue-700 rounded-lg hover:bg-blue-800 dark:hover:bg-blue-600 transition-colors shadow-xs"
+                  disabled={isSavingUser}
+                  className="px-4 py-2 text-xs font-semibold text-white bg-blue-900 dark:bg-blue-700 rounded-lg hover:bg-blue-800 dark:hover:bg-blue-600 transition-colors shadow-xs disabled:opacity-60 cursor-pointer"
                 >
-                  {editingUserId ? 'Simpan Perubahan' : 'Daftarkan Pengguna'}
+                  {editingUserId
+                    ? 'Simpan Perubahan'
+                    : isSavingUser
+                    ? 'Menyimpan ke Auth & Firestore...'
+                    : 'Daftarkan Pengguna'}
                 </button>
               </div>
             </form>

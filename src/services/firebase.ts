@@ -5,6 +5,7 @@ import {
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   sendPasswordResetEmail,
+  sendEmailVerification,
   EmailAuthProvider,
   linkWithCredential,
   updatePassword,
@@ -135,6 +136,13 @@ export const sendResetPassword = async (email: string): Promise<void> => {
   await sendPasswordResetEmail(auth, email.trim().toLowerCase());
 };
 
+export const sendCurrentUserVerificationEmail = async (): Promise<void> => {
+  if (!auth.currentUser) {
+    throw new Error('Silakan masuk terlebih dahulu sebelum mengirim email verifikasi.');
+  }
+  await sendEmailVerification(auth.currentUser);
+};
+
 const PROVISIONING_APP_NAME = 'mon-grc-provisioning';
 
 function getProvisioningAuth() {
@@ -196,6 +204,8 @@ export function formatFirebaseAuthError(error: unknown): string {
       const host = typeof window !== 'undefined' ? window.location.hostname : 'domain ini';
       return `Domain "${host}" belum diizinkan pada Firebase Authentication. Tambahkan "${host}" di Firebase Console → Authentication → Settings → Authorized domains.`;
     }
+    case 'permission-denied':
+      return 'Firestore: Missing or insufficient permissions. Pastikan akun Admin sudah terverifikasi (Sign in with Google) dan memiliki otoritas Admin pada database.';
     default:
       return error instanceof Error ? error.message : 'Terjadi kesalahan autentikasi Firebase.';
   }
@@ -215,11 +225,13 @@ export const linkOrUpdateCurrentUserPassword = async (
 
   if (hasPasswordProvider) {
     await updatePassword(user, newPassword);
+    await user.getIdToken(true);
     return 'updated';
   }
 
   const credential = EmailAuthProvider.credential(user.email, newPassword);
   await linkWithCredential(user, credential);
+  await user.getIdToken(true);
   return 'linked';
 };
 

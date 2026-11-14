@@ -47,6 +47,13 @@ export const SpreadsheetGrid: React.FC = () => {
   const [editInputVal, setEditInputVal] = useState<string>('');
   const [editReason, setEditReason] = useState<string>('');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [hoveredCell, setHoveredCell] = useState<{
+    satker: SatkerData;
+    indicator: IndicatorMeta;
+    value: number | null;
+    canEdit: boolean;
+  } | null>(null);
+  const [hoveredLockNotice, setHoveredLockNotice] = useState(false);
 
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -196,8 +203,9 @@ export const SpreadsheetGrid: React.FC = () => {
           ) : (
             <button
               disabled
+              onMouseEnter={() => setHoveredLockNotice(true)}
+              onMouseLeave={() => setHoveredLockNotice(false)}
               className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-xs font-medium bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 cursor-not-allowed opacity-80 select-none shadow-none"
-              title={`Tombol kunci edit spreadsheet hanya dapat diubah oleh peran Admin. Peran Anda saat ini: ${currentUser?.role || 'Tamu'}.`}
             >
               <Lock className="w-3.5 h-3.5 text-slate-400 dark:text-slate-500 shrink-0" />
               <span>{isEditLocked ? 'Kunci Edit: Aktif' : 'Mode Edit: Terbuka'}</span>
@@ -237,19 +245,6 @@ export const SpreadsheetGrid: React.FC = () => {
           </div>
         </div>
       </div>
-
-      {/* Access alert message */}
-      {errorMsg && (
-        <div className="p-3 bg-amber-50 dark:bg-amber-950/60 border border-amber-300 dark:border-amber-800 rounded-lg text-amber-900 dark:text-amber-200 text-xs flex items-center justify-between animate-in fade-in">
-          <div className="flex items-center gap-2">
-            <AlertCircle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
-            <span>{errorMsg}</span>
-          </div>
-          <button onClick={() => setErrorMsg(null)} className="text-amber-700 dark:text-amber-300 hover:text-amber-900 dark:hover:text-amber-100">
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-      )}
 
       {/* Filters & Search Toolbar */}
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-4 shadow-xs flex flex-col sm:flex-row items-center justify-between gap-4">
@@ -476,15 +471,15 @@ export const SpreadsheetGrid: React.FC = () => {
                           <td
                             key={`cell-${meta.key}`}
                             onClick={() => startEditing(s, meta)}
-                            title={
-                              isEditLocked
-                                ? (isAdmin 
-                                    ? 'Spreadsheet terkunci (Hanya-Baca). Klik tombol Kunci Edit di menu untuk membuka mode edit.' 
-                                    : 'Spreadsheet terkunci (Hanya-Baca). Hanya Administrator yang dapat membuka kunci mode edit.')
-                                : canEditThis 
-                                  ? 'Klik untuk mengubah skor (live recalculation)' 
-                                  : 'Lihat nilai (peran hanya-baca)'
+                            onMouseEnter={() =>
+                              setHoveredCell({
+                                satker: s,
+                                indicator: meta,
+                                value: rawVal,
+                                canEdit: canEditThisCell,
+                              })
                             }
+                            onMouseLeave={() => setHoveredCell(null)}
                             className={`py-2 px-2 font-mono text-[11px] tabular-nums transition-colors ${
                               canEditThisCell 
                                 ? 'cursor-pointer hover:bg-blue-100/70 dark:hover:bg-blue-900/50 hover:font-bold hover:ring-1 hover:ring-blue-400' 
@@ -629,6 +624,94 @@ export const SpreadsheetGrid: React.FC = () => {
           </table>
         </div>
       </div>
+
+      {/* Floating Bottom-Right Popup for View-Only / Lock Notification (on hover or click) */}
+      {(errorMsg || hoveredLockNotice || (hoveredCell && !hoveredCell.canEdit)) && (
+        <div
+          className={`fixed bottom-6 right-6 z-40 p-4 bg-amber-50 dark:bg-amber-950/95 border border-amber-300 dark:border-amber-800 rounded-xl shadow-xl text-amber-900 dark:text-amber-200 max-w-xs text-xs animate-in fade-in duration-150 ${
+            errorMsg ? '' : 'pointer-events-none'
+          }`}
+        >
+          {errorMsg ? (
+            <div className="flex items-start justify-between gap-2.5">
+              <div className="flex items-start gap-2">
+                <AlertCircle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                <span className="leading-relaxed">{errorMsg}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setErrorMsg(null)}
+                className="text-amber-700 dark:text-amber-300 hover:text-amber-900 dark:hover:text-amber-100 shrink-0 cursor-pointer"
+                aria-label="Tutup notifikasi"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          ) : hoveredLockNotice ? (
+            <div className="flex items-start gap-2">
+              <Lock className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+              <div className="space-y-1">
+                <div className="font-bold">Mode Hanya-Baca (View-Only)</div>
+                <p className="text-[11px] leading-relaxed">
+                  Tombol kunci edit spreadsheet hanya dapat diubah oleh peran Admin. Peran Anda saat ini:{' '}
+                  <strong>{currentUser?.role || 'Tamu'}</strong>.
+                </p>
+              </div>
+            </div>
+          ) : hoveredCell ? (
+            <div className="space-y-2">
+              <div className="flex items-start gap-2">
+                {isEditLocked ? (
+                  <Lock className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                ) : (
+                  <AlertCircle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                )}
+                <div>
+                  <div className="font-bold text-sm">{hoveredCell.satker.satker}</div>
+                  <div className="text-[11px] opacity-85">{hoveredCell.satker.unitKerja}</div>
+                </div>
+              </div>
+              <div className="pt-2 border-t border-amber-200 dark:border-amber-800/80 space-y-1">
+                <div className="flex justify-between gap-3">
+                  <span className="opacity-80">Indikator:</span>
+                  <span className="font-semibold text-right">
+                    {hoveredCell.indicator.fullName} ({hoveredCell.indicator.label})
+                  </span>
+                </div>
+                <div className="flex justify-between font-mono">
+                  <span className="opacity-80">Nilai Satker:</span>
+                  <span className="font-bold text-sm">{formatNumber(hoveredCell.value)}</span>
+                </div>
+                <div className="flex justify-between font-mono">
+                  <span className="opacity-80">Ambang Target:</span>
+                  <span className="font-semibold">{hoveredCell.indicator.threshold}</span>
+                </div>
+                <div className="flex justify-between pt-0.5">
+                  <span className="opacity-80">Status:</span>
+                  <span
+                    className={
+                      isIndicatorTercapai(hoveredCell.indicator, hoveredCell.value)
+                        ? 'text-emerald-700 dark:text-emerald-300 font-bold'
+                        : 'text-rose-700 dark:text-rose-300 font-bold'
+                    }
+                  >
+                    {isIndicatorTercapai(hoveredCell.indicator, hoveredCell.value)
+                      ? 'TERCAPAI'
+                      : 'TIDAK TERCAPAI'}
+                  </span>
+                </div>
+              </div>
+              <div className="pt-2 border-t border-amber-200 dark:border-amber-800/80 text-[11px] leading-relaxed">
+                {isEditLocked
+                  ? isAdmin
+                    ? 'Spreadsheet terkunci (Hanya-Baca). Klik tombol Kunci Edit di menu atas untuk membuka mode edit.'
+                    : 'Spreadsheet terkunci (Hanya-Baca). Hanya Administrator yang dapat membuka kunci mode edit.'
+                  : `Peran Anda (${currentUser?.role || 'Tamu'} · ${currentUser?.name || 'Tamu'}) hanya memiliki hak baca/tinjau (View-Only) untuk ${hoveredCell.satker.satker}.`}
+              </div>
+            </div>
+          ) : null}
+        </div>
+      )}
     </div>
   );
 };

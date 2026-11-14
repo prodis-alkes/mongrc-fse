@@ -36,9 +36,17 @@ service cloud.firestore {
              get(/databases/$(database)/documents/userRoles/$(authEmailLower())).data.status == 'active';
     }
 
+    function hasUidAdminRoleDoc() {
+      return isAuthenticated() &&
+             exists(/databases/$(database)/documents/uidRoles/$(request.auth.uid)) &&
+             get(/databases/$(database)/documents/uidRoles/$(request.auth.uid)).data.role == 'Admin' &&
+             get(/databases/$(database)/documents/uidRoles/$(request.auth.uid)).data.status == 'active';
+    }
+
     function isAdmin() {
       return isBootstrapAdmin() ||
              (isAuthenticated() && exists(/databases/$(database)/documents/admins/$(request.auth.uid))) ||
+             hasUidAdminRoleDoc() ||
              hasAdminRoleDoc();
     }
 
@@ -263,8 +271,8 @@ service cloud.firestore {
     match /users/{userId} {
       allow get: if isValidId(userId) && (
         isOwner(userId) ||
-        (isAuthenticated() && resource.data.uid == request.auth.uid) ||
-        (isVerifiedEmail() && resource.data.email.lower() == authEmailLower()) ||
+        (isAuthenticated() && ('uid' in resource.data) && resource.data.uid == request.auth.uid) ||
+        (isVerifiedEmail() && ('email' in resource.data) && resource.data.email is string && resource.data.email.lower() == authEmailLower()) ||
         isAdmin()
       );
       allow list: if isBootstrapAdmin() || (
@@ -280,13 +288,19 @@ service cloud.firestore {
           isAuthenticated() &&
           (
             userId == request.auth.uid ||
-            resource.data.uid == request.auth.uid ||
-            (isVerifiedEmail() && resource.data.email.lower() == authEmailLower())
+            (('uid' in resource.data) && resource.data.uid == request.auth.uid) ||
+            (isVerifiedEmail() && ('email' in resource.data) && resource.data.email is string && resource.data.email.lower() == authEmailLower())
           ) &&
           request.resource.data.role == resource.data.role &&
           request.resource.data.status == resource.data.status &&
-          request.resource.data.assignedSatkerNo == resource.data.assignedSatkerNo &&
-          request.resource.data.assignedSatker == resource.data.assignedSatker
+          (
+            (!('assignedSatkerNo' in resource.data) && !('assignedSatkerNo' in request.resource.data)) ||
+            (('assignedSatkerNo' in resource.data) && ('assignedSatkerNo' in request.resource.data) && request.resource.data.assignedSatkerNo == resource.data.assignedSatkerNo)
+          ) &&
+          (
+            (!('assignedSatker' in resource.data) && !('assignedSatker' in request.resource.data)) ||
+            (('assignedSatker' in resource.data) && ('assignedSatker' in request.resource.data) && request.resource.data.assignedSatker == resource.data.assignedSatker)
+          )
         )
       );
       allow delete: if isValidId(userId) && isAdmin() && userId != request.auth.uid;

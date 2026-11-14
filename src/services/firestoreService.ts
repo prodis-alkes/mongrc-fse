@@ -175,12 +175,13 @@ export async function resolveUserRoleFromFirestore(
 ): Promise<{
   isAdmin: boolean;
   userDoc: UserProfile | null;
+  hasFirestoreRole: boolean;
 }> {
   const emailLower = email.trim().toLowerCase();
   const isBootstrap = emailVerified && emailLower === BOOTSTRAP_ADMIN_EMAIL.toLowerCase();
 
   try {
-    const adminSnap = await getDoc(doc(db, 'admins', uid));
+    const adminSnap = await getDoc(doc(db, 'admins', uid)).catch(() => null);
     const uidRoleSnap = await getDoc(doc(db, 'uidRoles', uid)).catch(() => null);
 
     let emailRoleSnap = null;
@@ -204,13 +205,53 @@ export async function resolveUserRoleFromFirestore(
 
     const isAdmin =
       isBootstrap ||
-      adminSnap.exists() ||
+      Boolean(adminSnap?.exists()) ||
       (activeRoleData?.role === 'Admin' && activeRoleData?.status === 'active');
 
-    return { isAdmin, userDoc };
+    return {
+      isAdmin,
+      userDoc,
+      hasFirestoreRole: Boolean(isBootstrap || adminSnap?.exists() || activeRoleData),
+    };
   } catch (err) {
     handleFirestoreError(err, OperationType.GET, `uidRoles/${uid}`);
-    return { isAdmin: isBootstrap, userDoc: null };
+    return { isAdmin: isBootstrap, userDoc: null, hasFirestoreRole: isBootstrap };
+  }
+}
+
+export async function ensureBootstrapAdminDocsInFirestore(params: {
+  uid: string;
+  email: string;
+  name: string;
+  adminProfile: UserProfile;
+}): Promise<void> {
+  const emailLower = params.email.trim().toLowerCase();
+  const batch = writeBatch(db);
+  const nowIso = new Date().toISOString();
+
+  batch.set(doc(db, 'admins', params.uid), {
+    uid: params.uid,
+    email: emailLower,
+    name: params.name,
+    grantedAt: nowIso,
+    grantedBy: emailLower,
+  });
+
+  const adminWithUid: UserProfile = {
+    ...params.adminProfile,
+    uid: params.uid,
+    email: emailLower,
+  };
+
+  batch.set(doc(db, 'users', adminWithUid.id), sanitizeUserForFirestore(adminWithUid));
+  batch.set(doc(db, 'userRoles', emailLower), sanitizeUserRoleEntry(adminWithUid));
+  batch.set(doc(db, 'uidRoles', params.uid), sanitizeUidRoleEntry(adminWithUid, params.uid));
+
+  try {
+    await batch.commit();
+  } catch (err) {
+    const info = handleFirestoreError(err, OperationType.WRITE, `admins/${params.uid}`);
+    throw new Error(`${info.error} (path: ${info.path})`);
   }
 }
 
@@ -336,14 +377,23 @@ interface BatchWriteOp {
   data: Record<string, unknown>;
 }
 
-async function commitChunkedWrites(ops: BatchWriteOp[], chunkSize = 350): Promise<void> {
-  for (let i = 0; i < ops.length; i += chunkSize) {
-    const batch = writeBatch(db);
-    const slice = ops.slice(i, i + chunkSize);
-    for (const op of slice) {
-      batch.set(op.ref, op.data);
+async function commitChunkedWrites(
+  ops: BatchWriteOp[],
+  pathLabel: string,
+  chunkSize = 350
+): Promise<void> {
+  try {
+    for (let i = 0; i < ops.length; i += chunkSize) {
+      const batch = writeBatch(db);
+      const slice = ops.slice(i, i + chunkSize);
+      for (const op of slice) {
+        batch.set(op.ref, op.data);
+      }
+      await batch.commit();
     }
-    await batch.commit();
+  } catch (err) {
+    const info = handleFirestoreError(err, OperationType.WRITE, pathLabel);
+    throw new Error(`${info.error} (path: ${info.path})`);
   }
 }
 
@@ -407,7 +457,7 @@ export async function seedInitialDatabase(params: {
     });
   }
 
-  await commitChunkedWrites(ops);
+  await commitChunkedWrites(ops, 'seedInitialDatabase');
 }
 
 export async function upsertUsersToFirestore(usersToSave: UserProfile[]): Promise<void> {
@@ -428,7 +478,7 @@ export async function upsertUsersToFirestore(usersToSave: UserProfile[]): Promis
       });
     }
   }
-  await commitChunkedWrites(ops);
+  await commitChunkedWrites(ops, 'users');
 }
 
 export async function saveSatkerToFirestore(satker: SatkerData): Promise<void> {
@@ -492,7 +542,7 @@ export async function saveUserToFirestore(
     await batch.commit();
   } catch (err) {
     const info = handleFirestoreError(err, OperationType.WRITE, `users/${user.id}`);
-    throw new Error(info.error);
+    throw new Error(`${info.error} (path: ${info.path})`);
   }
 }
 
@@ -507,7 +557,7 @@ export async function deleteUserFromFirestore(user: UserProfile): Promise<void> 
     await batch.commit();
   } catch (err) {
     const info = handleFirestoreError(err, OperationType.DELETE, `users/${user.id}`);
-    throw new Error(info.error);
+    throw new Error(`${info.error} (path: ${info.path})`);
   }
 }
 
