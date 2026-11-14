@@ -194,7 +194,6 @@ interface GRCContextType {
   satkers: SatkerData[];
   users: UserProfile[];
   currentUser: UserProfile | null;
-  setCurrentUser: (user: UserProfile) => void;
   isAuthenticated: boolean;
   login: (identifier: string, password?: string) => Promise<{ success: boolean; error?: string }>;
   logout: () => void;
@@ -932,6 +931,27 @@ export const GRCProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     newValue: number | null,
     reason: string
   ): { success: boolean; error?: string } => {
+    const readOnlyCalculatedFields: Array<keyof SatkerData> = [
+      'pSki',
+      'pSpip',
+      'pMri',
+      'pIepk',
+      'pWbkRb',
+      'pSakip',
+      'pNka',
+      'pIkpa',
+      'pIpAsn',
+      'pArsip',
+      'pPekppp',
+      'average',
+    ];
+    if (readOnlyCalculatedFields.includes(fieldKey)) {
+      return {
+        success: false,
+        error: 'Kolom skor normalisasi persentase dan komposit bersifat otomatis (Read-Only) dan dihitung dari skor riil masing-masing dimensi.',
+      };
+    }
+
     if (!currentUser || currentUser.role === 'Viewer') {
       return {
         success: false,
@@ -1126,7 +1146,6 @@ export const GRCProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         satkers,
         users,
         currentUser,
-        setCurrentUser,
         isAuthenticated,
         login,
         logout,

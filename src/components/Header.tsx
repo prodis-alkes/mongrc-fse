@@ -4,7 +4,6 @@ import { exportSatkersToCSV } from '../utils/grcCalculations';
 import { 
   Download, 
   Upload, 
-  Check, 
   ChevronDown,
   Users,
   LogOut,
@@ -23,9 +22,7 @@ interface HeaderProps {
 export const Header: React.FC<HeaderProps> = ({ onOpenImportModal, onOpenLoginModal }) => {
   const { 
     satkers, 
-    users,
     currentUser, 
-    setCurrentUser, 
     logout,
     activeTab, 
     setActiveTab, 
@@ -305,38 +302,8 @@ export const Header: React.FC<HeaderProps> = ({ onOpenImportModal, onOpenLoginMo
                       </button>
                     </div>
 
-                    {/* Quick Switch Persona Section */}
-                    <div className="px-3 pt-2 pb-1 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
-                      Beralih Akun (Simulasi Peran):
-                    </div>
-                    <div className="max-h-48 overflow-y-auto px-1 space-y-0.5 custom-scrollbar">
-                      {users.map(u => {
-                        const isSelected = u.id === currentUser.id;
-                        return (
-                          <button
-                            key={u.id}
-                            onClick={() => {
-                              setCurrentUser(u);
-                              setShowUserDropdown(false);
-                            }}
-                            className={`w-full px-3 py-1.5 text-left rounded-md flex items-center justify-between text-xs transition-colors ${
-                              isSelected ? 'bg-blue-50 dark:bg-blue-950/60 text-blue-900 dark:text-blue-200 font-bold' : 'hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300'
-                            }`}
-                          >
-                            <div className="truncate mr-2">
-                              <span className="font-medium">{u.name}</span>
-                              <span className="text-[10px] text-slate-400 dark:text-slate-500 block">
-                                {u.role} {u.assignedSatker ? `· ${u.assignedSatker}` : ''}
-                              </span>
-                            </div>
-                            {isSelected && <Check className="w-3.5 h-3.5 text-blue-700 dark:text-blue-400 shrink-0" />}
-                          </button>
-                        );
-                      })}
-                    </div>
-
                     {/* Logout Button */}
-                    <div className="mt-1 pt-1 border-t border-slate-100 dark:border-slate-800 px-2">
+                    <div className="pt-1 px-2">
                       <button
                         onClick={handleLogout}
                         className="w-full text-left px-3 py-2 rounded-lg text-rose-700 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 text-xs font-semibold flex items-center gap-2 transition-colors cursor-pointer"

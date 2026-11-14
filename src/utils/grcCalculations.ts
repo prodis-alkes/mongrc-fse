@@ -1,8 +1,22 @@
 import { INDICATOR_METAS } from '../data/baselineData';
 import { IndicatorMeta, SatkerData, SummaryThresholdResult } from '../types/mongrc';
 
+export function getDimensionMaxScore(meta: Pick<IndicatorMeta, 'scale'>): number {
+  return meta.scale === '5-scale' ? 5 : 100;
+}
+
+export function calculateNormalizedPercentage(
+  meta: Pick<IndicatorMeta, 'scale'>,
+  rawValue: number | null | undefined
+): number {
+  if (rawValue === null || rawValue === undefined || isNaN(rawValue)) return 0;
+  const maxScore = getDimensionMaxScore(meta);
+  return round2((rawValue / maxScore) * 100);
+}
+
 /**
- * Recalculate normalized P-scores and composite AVERAGE for a Satker record.
+ * Recalculate normalized P-scores and composite AVERAGE for a Satker record
+ * from each dimension's raw score and maximum score (5 or 100).
  */
 export function recalculateSatkerScores(satker: Partial<SatkerData>): SatkerData {
   const ski = satker.ski ?? 0;
@@ -18,18 +32,18 @@ export function recalculateSatkerScores(satker: Partial<SatkerData>): SatkerData
   const arsip = satker.arsip ?? 0;
   const pekppp = satker.pekppp ?? null;
 
-  // Normalizations (0-100)
-  const pSki = round2(ski);
-  const pSpip = round2(spip * 20);
-  const pMri = round2(mri * 20);
-  const pIepk = round2(iepk * 20);
-  const pWbkRb = round2(wbkRb);
-  const pSakip = round2(sakip);
-  const pNka = round2(nka);
-  const pIkpa = round2(ikpa);
-  const pIpAsn = round2(ipAsn);
-  const pArsip = round2(arsip);
-  const pPekppp = pekppp !== null ? round2(pekppp * 20) : 0;
+  // Normalizations: (rawScore / dimensionMaxScore) * 100
+  const pSki = calculateNormalizedPercentage({ scale: '100-scale' }, ski);
+  const pSpip = calculateNormalizedPercentage({ scale: '5-scale' }, spip);
+  const pMri = calculateNormalizedPercentage({ scale: '5-scale' }, mri);
+  const pIepk = calculateNormalizedPercentage({ scale: '5-scale' }, iepk);
+  const pWbkRb = calculateNormalizedPercentage({ scale: '100-scale' }, wbkRb);
+  const pSakip = calculateNormalizedPercentage({ scale: '100-scale' }, sakip);
+  const pNka = calculateNormalizedPercentage({ scale: '100-scale' }, nka);
+  const pIkpa = calculateNormalizedPercentage({ scale: '100-scale' }, ikpa);
+  const pIpAsn = calculateNormalizedPercentage({ scale: '100-scale' }, ipAsn);
+  const pArsip = calculateNormalizedPercentage({ scale: '100-scale' }, arsip);
+  const pPekppp = calculateNormalizedPercentage({ scale: '5-scale' }, pekppp);
 
   // Composite average over the 11 normalized dimensions (matches Kemenkes MonGRC formula)
   const pValues = [
@@ -137,10 +151,8 @@ export function calculateSummaryStats(satkers: SatkerData[]) {
     if (meta.pKey) {
       let pSum = 0;
       satkers.forEach(s => {
-        const pv = s[meta.pKey!];
-        if (typeof pv === 'number' && !isNaN(pv)) {
-          pSum += pv;
-        }
+        const rawVal = s[meta.key] as number | null | undefined;
+        pSum += calculateNormalizedPercentage(meta, rawVal);
       });
       pAverages[meta.pKey] = round2(pSum / count);
     }

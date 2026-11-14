@@ -1,7 +1,12 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { useGRC } from '../context/GRCContext';
 import { INDICATOR_METAS } from '../data/baselineData';
-import { formatNumber, isIndicatorTercapai } from '../utils/grcCalculations';
+import {
+  calculateNormalizedPercentage,
+  formatNumber,
+  getDimensionMaxScore,
+  isIndicatorTercapai,
+} from '../utils/grcCalculations';
 import { SatkerData, IndicatorMeta } from '../types/mongrc';
 import { 
   Search, 
@@ -52,6 +57,13 @@ export const SpreadsheetGrid: React.FC = () => {
     indicator: IndicatorMeta;
     value: number | null;
     canEdit: boolean;
+  } | null>(null);
+  const [hoveredNormalizedCell, setHoveredNormalizedCell] = useState<{
+    satker: SatkerData;
+    indicator: IndicatorMeta;
+    rawValue: number | null;
+    maxScore: number;
+    percentage: number;
   } | null>(null);
   const [hoveredLockNotice, setHoveredLockNotice] = useState(false);
 
@@ -232,7 +244,7 @@ export const SpreadsheetGrid: React.FC = () => {
                 columnViewMode === 'raw' ? 'bg-blue-900 dark:bg-blue-700 text-white' : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
               }`}
             >
-              Skor Ril
+              Skor Riil
             </button>
             <button
               onClick={() => setColumnViewMode('normalized')}
@@ -330,17 +342,20 @@ export const SpreadsheetGrid: React.FC = () => {
                     colSpan={INDICATOR_METAS.length} 
                     className="py-2 px-3 bg-blue-50/70 dark:bg-blue-950/60 text-blue-950 dark:text-blue-200 border-r-2 border-slate-300 dark:border-slate-700"
                   >
-                    INDIKATOR KINERJA GRC (SKOR MENTAH)
+                    INDIKATOR KINERJA GRC (SKOR RIIL)
                   </th>
                 )}
 
-                {/* Normalized P-Scores Super Header */}
+                {/* Normalized P-Scores Super Header (Always Read-Only) */}
                 {(columnViewMode === 'all' || columnViewMode === 'normalized') && (
                   <th 
                     colSpan={11} 
                     className="py-2 px-3 bg-emerald-50/70 dark:bg-emerald-950/50 text-emerald-950 dark:text-emerald-200 border-r-2 border-slate-300 dark:border-slate-700"
                   >
-                    SKOR NORMALISASI PERSENTASE (0 - 100)
+                    <span className="inline-flex items-center justify-center gap-1.5">
+                      <Lock className="w-3 h-3 text-emerald-700 dark:text-emerald-400 shrink-0" />
+                      <span>SKOR NORMALISASI PERSENTASE (0 - 100) · READ-ONLY</span>
+                    </span>
                   </th>
                 )}
 
@@ -371,16 +386,23 @@ export const SpreadsheetGrid: React.FC = () => {
                   ))
                 )}
 
-                {/* Normalized P-Columns */}
+                {/* Normalized P-Columns (Always Read-Only, computed from max dimension score) */}
                 {(columnViewMode === 'all' || columnViewMode === 'normalized') && (
-                  INDICATOR_METAS.filter(m => m.pKey !== null).map(m => (
-                    <th key={`p-${m.pKey}`} className="py-2.5 px-2 min-w-[68px] whitespace-nowrap bg-emerald-50/30 dark:bg-emerald-950/30 font-mono">
-                      <div>P{m.label.replace('/', '')}</div>
-                      <div className="text-[9px] text-emerald-600 dark:text-emerald-400 font-normal font-mono">
-                        (0-100)
-                      </div>
-                    </th>
-                  ))
+                  INDICATOR_METAS.filter(m => m.pKey !== null).map(m => {
+                    const maxScore = getDimensionMaxScore(m);
+                    return (
+                      <th
+                        key={`p-${m.pKey}`}
+                        title={`Read-Only: Dihitung otomatis dari (${m.label} ÷ ${maxScore}) × 100%`}
+                        className="py-2.5 px-2 min-w-[68px] whitespace-nowrap bg-emerald-50/30 dark:bg-emerald-950/30 font-mono"
+                      >
+                        <div>P{m.label.replace('/', '')}</div>
+                        <div className="text-[9px] text-emerald-600 dark:text-emerald-400 font-normal font-mono">
+                          (/{maxScore} → %)
+                        </div>
+                      </th>
+                    );
+                  })
                 )}
 
                 <th className="py-2.5 px-3 text-right bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-extrabold border-l border-slate-200 dark:border-slate-700">
@@ -496,14 +518,33 @@ export const SpreadsheetGrid: React.FC = () => {
                       })
                     )}
 
-                    {/* Normalized P-Columns Cells */}
+                    {/* Normalized P-Columns Cells (Always Read-Only, calculated from raw / maxScore * 100) */}
                     {(columnViewMode === 'all' || columnViewMode === 'normalized') && (
                       INDICATOR_METAS.filter(m => m.pKey !== null).map(meta => {
-                        const pVal = s[meta.pKey!] as number;
+                        const rawVal = s[meta.key] as number | null;
+                        const maxScore = getDimensionMaxScore(meta);
+                        const pVal = calculateNormalizedPercentage(meta, rawVal);
                         return (
                           <td
                             key={`pcell-${meta.pKey}`}
-                            className="py-2 px-2 font-mono text-[11px] tabular-nums text-slate-600 dark:text-slate-300 bg-slate-50/40 dark:bg-slate-800/30"
+                            aria-readonly="true"
+                            onClick={() => {
+                              setErrorMsg(
+                                `Kolom P${meta.label.replace('/', '')} bersifat Read-Only (kalkulasi otomatis dari ${meta.label}: ${rawVal !== null ? formatNumber(rawVal) : '-'} ÷ ${maxScore} × 100% = ${formatNumber(pVal)}%).`
+                              );
+                              setTimeout(() => setErrorMsg(null), 4000);
+                            }}
+                            onMouseEnter={() =>
+                              setHoveredNormalizedCell({
+                                satker: s,
+                                indicator: meta,
+                                rawValue: rawVal,
+                                maxScore,
+                                percentage: pVal,
+                              })
+                            }
+                            onMouseLeave={() => setHoveredNormalizedCell(null)}
+                            className="py-2 px-2 font-mono text-[11px] tabular-nums text-slate-600 dark:text-slate-300 bg-slate-50/40 dark:bg-slate-800/30 cursor-not-allowed select-none"
                           >
                             {formatNumber(pVal)}
                           </td>
@@ -625,8 +666,8 @@ export const SpreadsheetGrid: React.FC = () => {
         </div>
       </div>
 
-      {/* Floating Bottom-Right Popup for View-Only / Lock Notification (on hover or click) */}
-      {(errorMsg || hoveredLockNotice || (hoveredCell && !hoveredCell.canEdit)) && (
+      {/* Floating Bottom-Right Popup for View-Only / Lock / Auto-Calculated Notification (on hover or click) */}
+      {(errorMsg || hoveredLockNotice || hoveredNormalizedCell || (hoveredCell && !hoveredCell.canEdit)) && (
         <div
           className={`fixed bottom-6 right-6 z-40 p-4 bg-amber-50 dark:bg-amber-950/95 border border-amber-300 dark:border-amber-800 rounded-xl shadow-xl text-amber-900 dark:text-amber-200 max-w-xs text-xs animate-in fade-in duration-150 ${
             errorMsg ? '' : 'pointer-events-none'
@@ -656,6 +697,35 @@ export const SpreadsheetGrid: React.FC = () => {
                   Tombol kunci edit spreadsheet hanya dapat diubah oleh peran Admin. Peran Anda saat ini:{' '}
                   <strong>{currentUser?.role || 'Tamu'}</strong>.
                 </p>
+              </div>
+            </div>
+          ) : hoveredNormalizedCell ? (
+            <div className="space-y-2">
+              <div className="flex items-start gap-2">
+                <Lock className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                <div>
+                  <div className="font-bold text-sm">{hoveredNormalizedCell.satker.satker}</div>
+                  <div className="text-[11px] opacity-85">
+                    P{hoveredNormalizedCell.indicator.label.replace('/', '')} · Kalkulasi Otomatis (Read-Only)
+                  </div>
+                </div>
+              </div>
+              <div className="pt-2 border-t border-amber-200 dark:border-amber-800/80 space-y-1 font-mono text-[11px]">
+                <div className="flex justify-between gap-3">
+                  <span className="opacity-80 font-sans">Skor Riil ({hoveredNormalizedCell.indicator.label}):</span>
+                  <span className="font-semibold">{formatNumber(hoveredNormalizedCell.rawValue)}</span>
+                </div>
+                <div className="flex justify-between gap-3">
+                  <span className="opacity-80 font-sans">Skor Maksimal Dimensi:</span>
+                  <span className="font-semibold">{hoveredNormalizedCell.maxScore}</span>
+                </div>
+                <div className="flex justify-between gap-3 pt-0.5">
+                  <span className="opacity-80 font-sans">Persentase (0-100):</span>
+                  <span className="font-bold text-sm">{formatNumber(hoveredNormalizedCell.percentage)}%</span>
+                </div>
+              </div>
+              <div className="pt-2 border-t border-amber-200 dark:border-amber-800/80 text-[11px] leading-relaxed">
+                Sel ini selalu Read-Only dan dihitung otomatis: (Skor Riil ÷ {hoveredNormalizedCell.maxScore}) × 100%.
               </div>
             </div>
           ) : hoveredCell ? (

@@ -110,12 +110,7 @@ export function mapSheetRowToSatker(raw: Record<string, unknown>): SatkerData | 
     lastUpdatedAt: lastUpdatedAtRaw || undefined,
   };
 
-  // Ensure P-scores and composite average remain consistent if any derived column was blank
-  if (draft.average === 0 && draft.ski > 0) {
-    return recalculateSatkerScores(draft);
-  }
-
-  return draft;
+  return recalculateSatkerScores(draft);
 }
 
 export function serializeSatkerToSheetRow(satker: SatkerData): Record<string, unknown> {
