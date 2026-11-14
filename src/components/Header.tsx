@@ -47,16 +47,27 @@ export const Header: React.FC<HeaderProps> = ({ onOpenLoginModal }) => {
     <header className="sticky top-0 z-30 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 shadow-xs transition-colors duration-150">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between gap-3 h-16">
-          {/* Zone 1: Single text element wordmark with official logo */}
-          <div className="flex items-center gap-2.5 shrink-0 cursor-pointer" onClick={() => setActiveTab('executive')}>
-            <img 
-              src="./assets/aistudio/favicon_f44d1301.png" 
-              alt="Logo MonGRC Kemenkes" 
-              className="w-9 h-9 object-contain shrink-0 drop-shadow-xs" 
-            />
-            <div>
-              <span className="text-lg font-bold tracking-tight text-slate-900 dark:text-slate-100 whitespace-nowrap block leading-tight">
-                MonGRC
+          {/* Zone 1: Wordmark with official logo + active Periode - Tahun */}
+          <div className="flex items-center gap-3 shrink-0">
+            <div className="flex items-center gap-2.5 shrink-0 cursor-pointer" onClick={() => setActiveTab('executive')}>
+              <img 
+                src="./assets/aistudio/favicon_f44d1301.png" 
+                alt="Logo MonGRC Kemenkes" 
+                className="w-9 h-9 object-contain shrink-0 drop-shadow-xs" 
+              />
+              <div>
+                <span className="text-lg font-bold tracking-tight text-slate-900 dark:text-slate-100 whitespace-nowrap block leading-tight">
+                  MonGRC
+                </span>
+              </div>
+            </div>
+
+            <div
+              className="hidden sm:flex items-center border-l border-slate-200 dark:border-slate-700 pl-3"
+              title="Periode dan Tahun Evaluasi Aktif"
+            >
+              <span className="px-2 py-1 rounded-md bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-200 whitespace-nowrap">
+                {appConfig.evaluationPeriod || 'Triwulan IV'} - {appConfig.evaluationYear || '2026'}
               </span>
             </div>
           </div>
