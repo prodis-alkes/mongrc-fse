@@ -78,7 +78,6 @@ export const INITIAL_USERS: UserProfile[] = [
     agency: 'Setditjen P2 Kemenkes RI',
     avatarInitials: 'BH',
     status: 'active',
-    password: DEFAULT_ADMIN_PASSWORD,
     lastLogin: '2026-11-10 08:30',
     createdAt: '2026-01-15 09:00',
   },
@@ -92,7 +91,6 @@ export const INITIAL_USERS: UserProfile[] = [
     agency: 'Inspektorat Jenderal Kemenkes RI',
     avatarInitials: 'ES',
     status: 'active',
-    password: DEFAULT_USER_PASSWORD,
     lastLogin: '2026-11-09 14:15',
     createdAt: '2026-01-20 10:30',
   },
@@ -510,11 +508,11 @@ export const GRCProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           );
           if (emailLower === BOOTSTRAP_ADMIN_EMAIL.toLowerCase() && !effectiveVerified) {
             setDbSyncError(
-              `Akun ${emailLower} belum terverifikasi (email_verified = false) pada token Firebase Auth saat ini. Kirim email verifikasi lalu klik "Muat Ulang Status" di menu Database, atau masuk ulang dengan Google setelah verifikasi.`
+              'Sesi akun belum terverifikasi. Masuk menggunakan Google atau selesaikan verifikasi email melalui menu Database untuk mengaktifkan hak akses.'
             );
           } else if (seedMatch && !hasFirestoreRole) {
             setDbSyncError(
-              `Akun ${emailLower} berhasil masuk ke Firebase Auth, namun profil & hak akses UID belum dihubungkan di Firestore. Minta Admin masuk dengan Google lalu jalankan "Provision 57 Login Satker".`
+              'Akun terautentikasi, namun profil dan hak akses database belum diaktifkan oleh Administrator.'
             );
           }
 
@@ -710,7 +708,7 @@ export const GRCProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   ): Promise<{ success: boolean; error?: string }> => {
     const cleanId = identifier.trim();
     if (!cleanId) {
-      return { success: false, error: 'Silakan masukkan Username, Email, atau NIP.' };
+      return { success: false, error: 'Silakan masukkan Username atau Email.' };
     }
     if (!password) {
       return { success: false, error: 'Silakan masukkan kata sandi.' };
@@ -719,7 +717,7 @@ export const GRCProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const pool = users.length > 0 ? users : INITIAL_USERS;
     const resolvedEmail = resolveIdentifierToEmail(cleanId, pool);
     if (!resolvedEmail) {
-      return { success: false, error: 'Username, Email, atau NIP tidak ditemukan.' };
+      return { success: false, error: 'Username/Email atau kata sandi tidak sesuai.' };
     }
 
     const matchedProfile = pool.find(
@@ -728,7 +726,7 @@ export const GRCProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (matchedProfile?.status === 'inactive') {
       return {
         success: false,
-        error: 'Akun Anda dinonaktifkan oleh Administrator. Hubungi Setditjen P2.',
+        error: 'Akun Anda saat ini dinonaktifkan oleh Administrator.',
       };
     }
 
@@ -744,6 +742,7 @@ export const GRCProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const logout = () => {
+    setDbSyncError(null);
     setCurrentUser(PUBLIC_VIEWER_USER);
     setUsers([]);
     if (firebaseUser) {
@@ -1027,7 +1026,6 @@ export const GRCProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         email: emailLower,
         role: 'Admin',
         status: 'active',
-        password: DEFAULT_ADMIN_PASSWORD,
       };
 
       if (isBootstrap) {

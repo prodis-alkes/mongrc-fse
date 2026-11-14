@@ -15,6 +15,7 @@ import { AlertTriangle, X } from 'lucide-react';
 function MainApp() {
   const {
     activeTab,
+    isAuthenticated,
     dbSyncError,
     clearDbSyncError,
   } = useGRC();
@@ -35,12 +36,15 @@ function MainApp() {
       {/* Top Navigation Bar */}
       <Header
         onOpenImportModal={() => setIsImportModalOpen(true)}
-        onOpenLoginModal={() => setIsLoginModalOpen(true)}
+        onOpenLoginModal={() => {
+          clearDbSyncError();
+          setIsLoginModalOpen(true);
+        }}
       />
 
       {/* Main View Container */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {dbSyncError && (
+        {isAuthenticated && dbSyncError && (
           <div className="mb-6 p-3 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800/70 flex items-center justify-between gap-3 text-xs text-rose-900 dark:text-rose-200">
             <div className="flex items-center gap-2.5">
               <AlertTriangle className="w-4 h-4 text-rose-600 dark:text-rose-400 shrink-0" />

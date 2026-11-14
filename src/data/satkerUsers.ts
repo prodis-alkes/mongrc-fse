@@ -108,7 +108,6 @@ export function buildInitialSatkerUsers(satkers: SatkerData[]): UserProfile[] {
       assignedSatkerNo: seed.satkerNo,
       avatarInitials: getInitials(satkerLabel),
       status: 'active',
-      password: DEFAULT_USER_PASSWORD,
       createdAt: '2026-11-13 00:00',
     };
   });

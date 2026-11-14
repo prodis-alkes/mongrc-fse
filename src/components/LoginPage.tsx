@@ -17,7 +17,7 @@ interface LoginPageProps {
 }
 
 export const LoginPage: React.FC<LoginPageProps> = ({ onSuccess, onExploreAsGuest }) => {
-  const { login, theme, toggleTheme, connectDatabaseWithGoogle, isDbConnecting, dbSyncError } = useGRC();
+  const { login, theme, toggleTheme, connectDatabaseWithGoogle, isDbConnecting } = useGRC();
 
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
@@ -115,10 +115,10 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onSuccess, onExploreAsGues
             <Lock className="w-5 h-5 text-slate-400 dark:text-slate-500" />
           </div>
 
-          {(errorMessage || dbSyncError) && (
+          {errorMessage && (
             <div className="mb-4 p-3 rounded-lg bg-rose-50 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-800/80 text-xs text-rose-800 dark:text-rose-300 flex items-start gap-2">
               <AlertCircle className="w-4 h-4 text-rose-600 dark:text-rose-400 shrink-0 mt-0.5" />
-              <span>{errorMessage || dbSyncError}</span>
+              <span>{errorMessage}</span>
             </div>
           )}
 
@@ -129,7 +129,11 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onSuccess, onExploreAsGues
               onClick={async () => {
                 setErrorMessage(null);
                 const ok = await connectDatabaseWithGoogle();
-                if (ok && onSuccess) onSuccess();
+                if (ok) {
+                  if (onSuccess) onSuccess();
+                } else {
+                  setErrorMessage('Gagal masuk menggunakan akun Google. Silakan coba lagi.');
+                }
               }}
               disabled={isDbConnecting}
               className="gsi-material-button w-full!"
@@ -175,7 +179,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onSuccess, onExploreAsGues
                   required
                   value={identifier}
                   onChange={e => setIdentifier(e.target.value)}
-                  placeholder="Contoh: admin.p2 atau user_batam"
+                  placeholder="Masukkan username atau email dinas..."
                   className="w-full pl-9 pr-3 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-blue-600 focus:bg-white dark:focus:bg-slate-800 transition-all text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500"
                 />
               </div>

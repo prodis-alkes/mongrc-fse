@@ -219,6 +219,17 @@ export async function resolveUserRoleFromFirestore(
   }
 }
 
+function formatFirestoreUiError(rawError: string): string {
+  const lower = rawError.toLowerCase();
+  if (lower.includes('permission') || lower.includes('insufficient')) {
+    return 'Akses database ditolak: akun Anda belum memiliki izin untuk operasi ini.';
+  }
+  if (lower.includes('offline') || lower.includes('network') || lower.includes('unavailable')) {
+    return 'Koneksi ke server database terganggu. Periksa koneksi internet Anda.';
+  }
+  return 'Terjadi kesalahan saat menyinkronkan data dengan database.';
+}
+
 export async function ensureBootstrapAdminDocsInFirestore(params: {
   uid: string;
   email: string;
@@ -251,7 +262,7 @@ export async function ensureBootstrapAdminDocsInFirestore(params: {
     await batch.commit();
   } catch (err) {
     const info = handleFirestoreError(err, OperationType.WRITE, `admins/${params.uid}`);
-    throw new Error(`${info.error} (path: ${info.path})`);
+    throw new Error(formatFirestoreUiError(info.error));
   }
 }
 
@@ -273,7 +284,7 @@ export function subscribeToSatkers(
     },
     (error) => {
       const info = handleFirestoreError(error, OperationType.LIST, 'satkers');
-      onError(`${info.error} (path: ${info.path})`);
+      onError(formatFirestoreUiError(info.error));
     }
   );
 }
@@ -293,7 +304,7 @@ export function subscribeToAppConfig(
     },
     (error) => {
       const info = handleFirestoreError(error, OperationType.GET, 'config/app');
-      onError(`${info.error} (path: ${info.path})`);
+      onError(formatFirestoreUiError(info.error));
     }
   );
 }
@@ -312,7 +323,7 @@ export function subscribeToAuditLogs(
     },
     (error) => {
       const info = handleFirestoreError(error, OperationType.LIST, 'auditLogs');
-      onError(`${info.error} (path: ${info.path})`);
+      onError(formatFirestoreUiError(info.error));
     }
   );
 }
@@ -331,7 +342,7 @@ export function subscribeToComments(
     },
     (error) => {
       const info = handleFirestoreError(error, OperationType.LIST, 'comments');
-      onError(`${info.error} (path: ${info.path})`);
+      onError(formatFirestoreUiError(info.error));
     }
   );
 }
@@ -367,7 +378,7 @@ export function subscribeToUsers(
     },
     (error) => {
       const info = handleFirestoreError(error, OperationType.LIST, 'users');
-      onError(`${info.error} (path: ${info.path})`);
+      onError(formatFirestoreUiError(info.error));
     }
   );
 }
@@ -393,7 +404,7 @@ async function commitChunkedWrites(
     }
   } catch (err) {
     const info = handleFirestoreError(err, OperationType.WRITE, pathLabel);
-    throw new Error(`${info.error} (path: ${info.path})`);
+    throw new Error(formatFirestoreUiError(info.error));
   }
 }
 
@@ -542,7 +553,7 @@ export async function saveUserToFirestore(
     await batch.commit();
   } catch (err) {
     const info = handleFirestoreError(err, OperationType.WRITE, `users/${user.id}`);
-    throw new Error(`${info.error} (path: ${info.path})`);
+    throw new Error(formatFirestoreUiError(info.error));
   }
 }
 
@@ -557,7 +568,7 @@ export async function deleteUserFromFirestore(user: UserProfile): Promise<void> 
     await batch.commit();
   } catch (err) {
     const info = handleFirestoreError(err, OperationType.DELETE, `users/${user.id}`);
-    throw new Error(`${info.error} (path: ${info.path})`);
+    throw new Error(formatFirestoreUiError(info.error));
   }
 }
 

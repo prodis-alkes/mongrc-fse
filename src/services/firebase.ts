@@ -208,31 +208,29 @@ export function formatFirebaseAuthError(error: unknown): string {
   const code = getFirebaseAuthErrorCode(error);
   switch (code) {
     case 'auth/operation-not-allowed':
-      return 'Provider Email/Password belum diaktifkan di Firebase Console (Authentication → Sign-in method → Email/Password → Enable).';
+      return 'Metode masuk Email/Kata Sandi belum diaktifkan oleh Administrator.';
     case 'auth/invalid-credential':
     case 'auth/wrong-password':
     case 'auth/user-not-found':
-      return 'Email/Username atau kata sandi tidak sesuai, atau akun login Firebase belum di-provision oleh Admin.';
+      return 'Username/Email atau kata sandi tidak sesuai.';
     case 'auth/invalid-email':
       return 'Format alamat email tidak valid.';
     case 'auth/user-disabled':
-      return 'Akun ini dinonaktifkan pada Firebase Authentication.';
+      return 'Akun ini saat ini dinonaktifkan.';
     case 'auth/too-many-requests':
-      return 'Terlalu banyak percobaan login gagal. Silakan tunggu beberapa menit sebelum mencoba lagi.';
+      return 'Terlalu banyak percobaan masuk. Silakan tunggu beberapa menit sebelum mencoba lagi.';
     case 'auth/email-already-in-use':
-      return 'Email sudah terdaftar di Firebase Authentication.';
+      return 'Email tersebut sudah terdaftar.';
     case 'auth/weak-password':
       return 'Kata sandi terlalu lemah (minimal 6 karakter).';
     case 'auth/requires-recent-login':
-      return 'Demi keamanan, silakan keluar dan masuk ulang dengan Google terlebih dahulu sebelum mereset kata sandi.';
-    case 'auth/unauthorized-domain': {
-      const host = typeof window !== 'undefined' ? window.location.hostname : 'domain ini';
-      return `Domain "${host}" belum diizinkan pada Firebase Authentication. Tambahkan "${host}" di Firebase Console → Authentication → Settings → Authorized domains.`;
-    }
+      return 'Demi keamanan, silakan keluar dan masuk ulang terlebih dahulu sebelum memperbarui kata sandi.';
+    case 'auth/unauthorized-domain':
+      return 'Domain akses ini belum diizinkan pada konfigurasi autentikasi sistem.';
     case 'permission-denied':
-      return 'Firestore: Missing or insufficient permissions. Pastikan akun Admin sudah terverifikasi (Sign in with Google) dan memiliki otoritas Admin pada database.';
+      return 'Akses ditolak: Anda tidak memiliki izin untuk melakukan operasi ini.';
     default:
-      return error instanceof Error ? error.message : 'Terjadi kesalahan autentikasi Firebase.';
+      return 'Terjadi kesalahan autentikasi. Silakan coba lagi.';
   }
 }
 

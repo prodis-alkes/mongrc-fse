@@ -185,14 +185,14 @@ export const DatabaseConfigModal: React.FC = () => {
                             if (res.success) {
                               setAdminResetNotice({
                                 ok: true,
-                                text: `Username admin.p2 & kata sandi Admin!123 berhasil ${res.mode === 'linked' ? 'ditautkan' : 'direset'} pada Firebase Auth & Firestore.`,
+                                text: `Kredensial default admin.p2 berhasil ${res.mode === 'linked' ? 'ditautkan' : 'direset'} pada Firebase Auth & Firestore.`,
                               });
                             } else if (res.error) {
                               setAdminResetNotice({ ok: false, text: res.error });
                             }
                           }}
                           disabled={isSyncingDb}
-                          title="Reset username ke admin.p2 dan password Firebase Auth ke Admin!123"
+                          title="Reset kredensial default admin.p2 pada Firebase Auth & Firestore"
                           className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/60 text-blue-900 dark:text-blue-200 hover:bg-blue-100 dark:hover:bg-blue-900/60 font-semibold transition-colors disabled:opacity-50 cursor-pointer"
                         >
                           <KeyRound className="w-3.5 h-3.5" />
@@ -282,7 +282,7 @@ export const DatabaseConfigModal: React.FC = () => {
               </div>
             )}
 
-            {dbSyncError && (
+            {isDbConnected && dbSyncError && (
               <div className="p-3 rounded-lg bg-rose-50 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-800 text-rose-800 dark:text-rose-200 flex items-start justify-between gap-2">
                 <div className="flex items-start gap-2">
                   <AlertTriangle className="w-4 h-4 text-rose-600 dark:text-rose-400 shrink-0 mt-0.5" />
@@ -298,29 +298,31 @@ export const DatabaseConfigModal: React.FC = () => {
             )}
 
             {/* Live Collection Summary */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1">
+            <div className={`grid grid-cols-2 ${isAdmin ? 'sm:grid-cols-4' : 'sm:grid-cols-3'} gap-2 pt-1`}>
               <div className="p-2.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
                 <div className="flex items-center gap-1.5 text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase">
                   <BarChart3 className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
-                  <span>/satkers</span>
+                  <span>Unit Satker</span>
                 </div>
                 <div className="mt-1 font-mono font-bold text-sm text-slate-900 dark:text-slate-100">
                   {satkers.length} Unit
                 </div>
               </div>
-              <div className="p-2.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
-                <div className="flex items-center gap-1.5 text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase">
-                  <Users className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-                  <span>/users</span>
+              {isAdmin && (
+                <div className="p-2.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
+                  <div className="flex items-center gap-1.5 text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase">
+                    <Users className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                    <span>Akun Pengguna</span>
+                  </div>
+                  <div className="mt-1 font-mono font-bold text-sm text-slate-900 dark:text-slate-100">
+                    {users.length} Akun
+                  </div>
                 </div>
-                <div className="mt-1 font-mono font-bold text-sm text-slate-900 dark:text-slate-100">
-                  {users.length} Akun
-                </div>
-              </div>
+              )}
               <div className="p-2.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
                 <div className="flex items-center gap-1.5 text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase">
                   <History className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
-                  <span>/auditLogs</span>
+                  <span>Log Audit</span>
                 </div>
                 <div className="mt-1 font-mono font-bold text-sm text-slate-900 dark:text-slate-100">
                   {auditLogs.length} Entri
@@ -329,7 +331,7 @@ export const DatabaseConfigModal: React.FC = () => {
               <div className="p-2.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
                 <div className="flex items-center gap-1.5 text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase">
                   <MessageSquare className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
-                  <span>/comments</span>
+                  <span>Catatan Pembinaan</span>
                 </div>
                 <div className="mt-1 font-mono font-bold text-sm text-slate-900 dark:text-slate-100">
                   {comments.length} Catatan
@@ -337,18 +339,20 @@ export const DatabaseConfigModal: React.FC = () => {
               </div>
             </div>
 
-            <div className="text-[11px] text-slate-500 dark:text-slate-400 font-mono flex flex-wrap items-center gap-x-4 gap-y-1">
-              <span>Project: {FIREBASE_PROJECT_ID}</span>
-              <span>Database ID: {FIRESTORE_DATABASE_ID}</span>
-            </div>
+            {isAdmin && (
+              <div className="text-[11px] text-slate-500 dark:text-slate-400 font-mono flex flex-wrap items-center gap-x-4 gap-y-1">
+                <span>Project: {FIREBASE_PROJECT_ID}</span>
+                <span>Database ID: {FIRESTORE_DATABASE_ID}</span>
+              </div>
+            )}
           </div>
 
-          {/* System Configuration Form (/config/app) */}
+          {/* System Configuration Form */}
           <form onSubmit={handleSaveConfig} className="space-y-4">
             <div className="flex items-center justify-between">
               <h4 className="font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2 text-sm">
                 <Settings className="w-4 h-4 text-blue-800 dark:text-blue-400" />
-                <span>Pengaturan Sistem (/config/app)</span>
+                <span>Pengaturan Sistem</span>
               </h4>
               {!isAdmin && (
                 <span className="text-[11px] text-amber-700 dark:text-amber-300 font-medium">
